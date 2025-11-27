@@ -12,20 +12,41 @@ const Index = () => {
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     
-    if (session) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("onboarding_completed")
-        .eq("user_id", session.user.id)
-        .single();
-
-      if (profile?.onboarding_completed) {
-        navigate("/dashboard");
-      } else {
-        navigate("/onboarding");
-      }
-    } else {
+    if (!session) {
       navigate("/auth");
+      return;
+    }
+
+    // Check user role
+    const { data: role } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", session.user.id)
+      .single();
+
+    if (role) {
+      if (role.role === "admin") {
+        navigate("/admin");
+        return;
+      } else if (role.role === "hospital") {
+        navigate("/hospital");
+        return;
+      } else if (role.role === "ambulance") {
+        navigate("/ambulance");
+        return;
+      }
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarding_completed")
+      .eq("user_id", session.user.id)
+      .single();
+
+    if (profile?.onboarding_completed) {
+      navigate("/dashboard");
+    } else {
+      navigate("/onboarding");
     }
   };
 
