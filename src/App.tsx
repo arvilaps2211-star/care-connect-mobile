@@ -8,6 +8,9 @@ import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
+import HospitalDashboard from "./pages/HospitalDashboard";
+import AmbulanceDashboard from "./pages/AmbulanceDashboard";
+import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +27,9 @@ const App = () => (
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/hospital" element={<HospitalDashboard />} />
+          <Route path="/ambulance" element={<AmbulanceDashboard />} />
+          <Route path="/admin" element={<AdminPanel />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

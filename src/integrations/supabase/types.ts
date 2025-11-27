@@ -22,6 +22,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          user_id: string | null
         }
         Insert: {
           contact_number: string
@@ -30,6 +31,7 @@ export type Database = {
           latitude: number
           longitude: number
           name: string
+          user_id?: string | null
         }
         Update: {
           contact_number?: string
@@ -38,6 +40,7 @@ export type Database = {
           latitude?: number
           longitude?: number
           name?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -46,9 +49,11 @@ export type Database = {
           accepted_by_ambulance: string | null
           accepted_by_hospital: string | null
           created_at: string | null
+          guardian_notified: boolean | null
           id: string
           latitude: number | null
           longitude: number | null
+          notified_at: string | null
           resolved_at: string | null
           status: string | null
           user_id: string
@@ -57,9 +62,11 @@ export type Database = {
           accepted_by_ambulance?: string | null
           accepted_by_hospital?: string | null
           created_at?: string | null
+          guardian_notified?: boolean | null
           id?: string
           latitude?: number | null
           longitude?: number | null
+          notified_at?: string | null
           resolved_at?: string | null
           status?: string | null
           user_id: string
@@ -68,9 +75,11 @@ export type Database = {
           accepted_by_ambulance?: string | null
           accepted_by_hospital?: string | null
           created_at?: string | null
+          guardian_notified?: boolean | null
           id?: string
           latitude?: number | null
           longitude?: number | null
+          notified_at?: string | null
           resolved_at?: string | null
           status?: string | null
           user_id?: string
@@ -108,32 +117,29 @@ export type Database = {
         Row: {
           contact_number: string | null
           created_at: string | null
-          email: string
           id: string
           latitude: number
           longitude: number
           name: string
-          password_hash: string
+          user_id: string | null
         }
         Insert: {
           contact_number?: string | null
           created_at?: string | null
-          email: string
           id?: string
           latitude: number
           longitude: number
           name: string
-          password_hash: string
+          user_id?: string | null
         }
         Update: {
           contact_number?: string | null
           created_at?: string | null
-          email?: string
           id?: string
           latitude?: number
           longitude?: number
           name?: string
-          password_hash?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -212,15 +218,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "hospital" | "ambulance" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -347,6 +380,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "hospital", "ambulance", "user"],
+    },
   },
 } as const

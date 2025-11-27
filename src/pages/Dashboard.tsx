@@ -53,32 +53,57 @@ const Dashboard = () => {
   };
 
   const handleEmergencyConfirmed = async (location: { latitude: number; longitude: number }) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    if (!user || !profile) return;
 
-      // Create emergency record
-      await supabase.from("emergencies").insert({
+    const { data: emergency, error } = await supabase
+      .from("emergencies")
+      .insert({
         user_id: user.id,
         latitude: location.latitude,
         longitude: location.longitude,
         status: "active",
-      });
+      })
+      .select()
+      .single();
 
-      toast({
-        title: "Emergency Activated",
-        description: "Notifying nearby hospitals and guardians...",
-        variant: "destructive",
-      });
-
-      // TODO: Trigger notifications via edge functions
-    } catch (error: any) {
+    if (error) {
+      console.error("Error recording emergency:", error);
       toast({
         title: "Error",
-        description: error.message,
+        description: "Failed to record emergency",
         variant: "destructive",
       });
+      return;
     }
+
+    // Get guardian info
+    const { data: guardians } = await supabase
+      .from("guardians")
+      .select("*")
+      .eq("user_id", user.id)
+      .limit(1);
+
+    // Call edge function to send notifications
+    if (guardians && guardians.length > 0) {
+      const { error: notifyError } = await supabase.functions.invoke("notify-emergency", {
+        body: {
+          emergencyId: emergency.id,
+          userPhone: profile.phone,
+          guardianPhone: guardians[0].contact_number,
+          userName: profile.name,
+          location: location,
+        },
+      });
+
+      if (notifyError) {
+        console.error("Error sending notifications:", notifyError);
+      }
+    }
+
+    toast({
+      title: "Emergency Recorded",
+      description: "Emergency services have been notified",
+    });
   };
 
   if (!profile) {
