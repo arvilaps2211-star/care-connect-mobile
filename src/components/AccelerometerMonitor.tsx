@@ -6,7 +6,7 @@ interface AccelerometerMonitorProps {
 }
 
 const AccelerometerMonitor = ({ onAccidentDetected }: AccelerometerMonitorProps) => {
-  const [sensitivity, setSensitivity] = useState(30); // Threshold
+  const [sensitivity, setSensitivity] = useState(25); // Threshold optimized for mobile
   const lastAcceleration = useRef({ x: 0, y: 0, z: 0 });
   const { toast } = useToast();
 
