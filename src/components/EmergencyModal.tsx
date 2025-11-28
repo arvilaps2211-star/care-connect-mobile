@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle, X } from "lucide-react";
+import { getCurrentPosition } from "@/utils/geolocation";
 
 interface EmergencyModalProps {
   open: boolean;
@@ -20,20 +21,14 @@ const EmergencyModal = ({
 
   useEffect(() => {
     if (open) {
-      // Get user's location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            setLocation({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            });
-          },
-          (error) => {
-            console.error("Error getting location:", error);
-          }
-        );
-      }
+      // Get user's location using Capacitor
+      getCurrentPosition()
+        .then((coords) => {
+          setLocation(coords);
+        })
+        .catch((error) => {
+          console.error("Error getting location:", error);
+        });
     }
   }, [open]);
 
