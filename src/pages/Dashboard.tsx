@@ -83,22 +83,48 @@ const Dashboard = () => {
       .eq("user_id", user.id)
       .limit(1);
 
-    // Call edge function to send notifications
+    // Call edge functions to send notifications
+    const notificationPromises = [];
+
+    // SMS notification to guardian
     if (guardians && guardians.length > 0) {
-      const { error: notifyError } = await supabase.functions.invoke("notify-emergency", {
+      notificationPromises.push(
+        supabase.functions.invoke("notify-emergency", {
+          body: {
+            emergencyId: emergency.id,
+            userPhone: profile.phone,
+            guardianPhone: guardians[0].contact_number,
+            userName: profile.name,
+            location: location,
+          },
+        })
+      );
+    }
+
+    // Push notification to hospitals and ambulances
+    notificationPromises.push(
+      supabase.functions.invoke("send-push-notification", {
         body: {
           emergencyId: emergency.id,
-          userPhone: profile.phone,
-          guardianPhone: guardians[0].contact_number,
-          userName: profile.name,
-          location: location,
+          title: "🚨 EMERGENCY ALERT",
+          body: `Emergency reported by ${profile.name}. Location: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+          data: {
+            type: "emergency",
+            lat: String(location.latitude),
+            lng: String(location.longitude),
+          },
+          targetRoles: ["hospital", "ambulance"],
         },
-      });
+      })
+    );
 
-      if (notifyError) {
-        console.error("Error sending notifications:", notifyError);
+    // Execute all notifications in parallel
+    const results = await Promise.allSettled(notificationPromises);
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Notification ${index} failed:`, result.reason);
       }
-    }
+    });
 
     toast({
       title: "Emergency Recorded",

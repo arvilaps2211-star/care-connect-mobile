@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, AlertCircle, MapPin, Phone, Clock } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Bell, Activity } from "lucide-react";
 
 interface Emergency {
   id: string;
@@ -17,10 +17,13 @@ interface Emergency {
     name: string;
     phone: string;
     age: number;
+    gender: string;
+    address: string;
   };
   medical_info: {
     blood_group: string;
     medical_history: string;
+    additional_notes: string;
   }[];
 }
 
@@ -28,13 +31,17 @@ const HospitalDashboard = () => {
   const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [loading, setLoading] = useState(true);
   const [hospitalInfo, setHospitalInfo] = useState<any>(null);
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     checkAuth();
     fetchEmergencies();
-    subscribeToEmergencies();
+    const unsubscribe = subscribeToEmergencies();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const checkAuth = async () => {
@@ -82,17 +89,16 @@ const HospitalDashboard = () => {
       return;
     }
 
-    // Fetch related data for each emergency
     const enrichedEmergencies = await Promise.all(
       (emergenciesData || []).map(async (emergency) => {
         const [profileRes, medicalRes] = await Promise.all([
-          supabase.from("profiles").select("name, phone, age").eq("user_id", emergency.user_id).single(),
-          supabase.from("medical_info").select("blood_group, medical_history").eq("user_id", emergency.user_id),
+          supabase.from("profiles").select("name, phone, age, gender, address").eq("user_id", emergency.user_id).single(),
+          supabase.from("medical_info").select("blood_group, medical_history, additional_notes").eq("user_id", emergency.user_id),
         ]);
 
         return {
           ...emergency,
-          profiles: profileRes.data || { name: "", phone: "", age: 0 },
+          profiles: profileRes.data || { name: "", phone: "", age: 0, gender: "", address: "" },
           medical_info: medicalRes.data || [],
         };
       })
@@ -123,27 +129,52 @@ const HospitalDashboard = () => {
     };
   };
 
-  const handleAccept = async (emergencyId: string) => {
-    const { error } = await supabase
-      .from("emergencies")
-      .update({
-        accepted_by_hospital: hospitalInfo?.id,
-        status: "accepted",
-      })
-      .eq("id", emergencyId);
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return (R * c).toFixed(1);
+  };
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to accept emergency",
-        variant: "destructive",
-      });
-    } else {
+  const openGoogleMaps = (lat: number, lng: number) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    window.open(url, '_blank');
+  };
+
+  const handleAcceptAndDispatch = async (emergencyId: string, lat: number, lng: number) => {
+    setDispatchingId(emergencyId);
+    
+    try {
+      const { error } = await supabase
+        .from("emergencies")
+        .update({
+          accepted_by_hospital: hospitalInfo?.id,
+          status: "accepted",
+        })
+        .eq("id", emergencyId);
+
+      if (error) throw error;
+
       toast({
         title: "Emergency Accepted",
-        description: "You've accepted this emergency case",
+        description: "Ambulance dispatch initiated. Opening navigation...",
       });
+
+      // Open Google Maps for navigation
+      openGoogleMaps(lat, lng);
       fetchEmergencies();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to accept emergency",
+        variant: "destructive",
+      });
+    } finally {
+      setDispatchingId(null);
     }
   };
 
@@ -153,106 +184,262 @@ const HospitalDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="container mx-auto p-4 md:p-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-foreground">Hospital Dashboard</h1>
-            {hospitalInfo && (
-              <p className="text-muted-foreground mt-2">{hospitalInfo.name}</p>
-            )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-700">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-red-500 to-red-600 p-3 rounded-xl">
+                <Activity className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Hospital Command Center</h1>
+                {hospitalInfo && (
+                  <p className="text-slate-400">{hospitalInfo.name}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-emerald-400 text-sm font-medium">System Online</span>
+              </div>
+              <Button variant="ghost" onClick={handleLogout} className="text-slate-400 hover:text-white hover:bg-slate-800">
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+            </div>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="bg-red-500/10 p-3 rounded-lg">
+                <AlertCircle className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Active Emergencies</p>
+                <p className="text-2xl font-bold text-white">{emergencies.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="bg-emerald-500/10 p-3 rounded-lg">
+                <Bell className="w-6 h-6 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Notifications</p>
+                <p className="text-2xl font-bold text-white">Active</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="bg-blue-500/10 p-3 rounded-lg">
+                <Navigation className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Dispatch Ready</p>
+                <p className="text-2xl font-bold text-white">Yes</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className="bg-purple-500/10 p-3 rounded-lg">
+                <Clock className="w-6 h-6 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Response Time</p>
+                <p className="text-2xl font-bold text-white">&lt; 5 min</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Active Emergencies */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertCircle className="h-6 w-6 text-emergency" />
-            <h2 className="text-2xl font-semibold">Active Emergencies</h2>
-            <Badge variant="destructive" className="ml-2">
-              {emergencies.length}
+        {/* Emergency List */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500" />
+              <h2 className="text-xl font-semibold text-white">Incoming Emergencies</h2>
+            </div>
+            <Badge className="bg-red-500/10 text-red-500 border-red-500/20 px-3 py-1">
+              {emergencies.length} Active
             </Badge>
           </div>
 
           {loading ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground">Loading emergencies...</p>
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardContent className="p-12 text-center">
+                <div className="animate-spin w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full mx-auto mb-4" />
+                <p className="text-slate-400">Loading emergencies...</p>
               </CardContent>
             </Card>
           ) : emergencies.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground">No active emergencies at the moment</p>
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardContent className="p-12 text-center">
+                <div className="bg-slate-700/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-slate-500" />
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">No Active Emergencies</h3>
+                <p className="text-slate-400">The system is monitoring for incoming alerts</p>
               </CardContent>
             </Card>
           ) : (
-            emergencies.map((emergency) => (
-              <Card key={emergency.id} className="border-l-4 border-l-emergency">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="text-emergency">EMERGENCY ALERT</span>
-                    <Badge variant="destructive">ACTIVE</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <h3 className="font-semibold mb-2">Patient Information</h3>
-                      <div className="space-y-2 text-sm">
-                        <p><strong>Name:</strong> {emergency.profiles.name}</p>
-                        <p><strong>Age:</strong> {emergency.profiles.age}</p>
-                        <p className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          {emergency.profiles.phone}
-                        </p>
+            <div className="grid gap-6">
+              {emergencies.map((emergency) => (
+                <Card key={emergency.id} className="bg-slate-800/50 border-l-4 border-l-red-500 border-slate-700 overflow-hidden">
+                  <CardHeader className="bg-red-500/5 border-b border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-red-500 p-2 rounded-lg animate-pulse">
+                          <AlertCircle className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-red-400 text-lg">EMERGENCY ALERT</CardTitle>
+                          <CardDescription className="text-slate-400">
+                            {new Date(emergency.created_at).toLocaleString()}
+                          </CardDescription>
+                        </div>
                       </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-semibold mb-2">Medical Information</h3>
-                      <div className="space-y-2 text-sm">
-                        {emergency.medical_info[0] && (
-                          <>
-                            <p><strong>Blood Group:</strong> {emergency.medical_info[0].blood_group}</p>
-                            <p><strong>Medical History:</strong> {emergency.medical_info[0].medical_history || "None"}</p>
-                          </>
+                      <div className="flex items-center gap-2">
+                        {hospitalInfo && (
+                          <Badge variant="outline" className="border-blue-500/30 text-blue-400">
+                            <Navigation className="w-3 h-3 mr-1" />
+                            {calculateDistance(
+                              hospitalInfo.latitude,
+                              hospitalInfo.longitude,
+                              emergency.latitude,
+                              emergency.longitude
+                            )} km away
+                          </Badge>
                         )}
+                        <Badge className="bg-red-500 text-white">CRITICAL</Badge>
                       </div>
                     </div>
-                  </div>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid lg:grid-cols-3 gap-6">
+                      {/* Patient Info */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-slate-300 font-medium">
+                          <User className="w-4 h-4" />
+                          Patient Information
+                        </div>
+                        <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Name</span>
+                            <span className="text-white font-medium">{emergency.profiles.name}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Age</span>
+                            <span className="text-white">{emergency.profiles.age} years</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Gender</span>
+                            <span className="text-white">{emergency.profiles.gender || "N/A"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400">Contact</span>
+                            <a href={`tel:${emergency.profiles.phone}`} className="text-blue-400 hover:underline flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {emergency.profiles.phone}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="border-t pt-4">
-                    <h3 className="font-semibold mb-2">Location</h3>
-                    <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4 text-emergency" />
-                      <span>Lat: {emergency.latitude}, Long: {emergency.longitude}</span>
+                      {/* Medical Info */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-slate-300 font-medium">
+                          <Heart className="w-4 h-4" />
+                          Medical Details
+                        </div>
+                        <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                          {emergency.medical_info[0] ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Blood Group</span>
+                                <Badge className="bg-red-500/20 text-red-400">
+                                  {emergency.medical_info[0].blood_group || "Unknown"}
+                                </Badge>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-sm">Medical History</span>
+                                <p className="text-white text-sm mt-1">
+                                  {emergency.medical_info[0].medical_history || "None reported"}
+                                </p>
+                              </div>
+                              {emergency.medical_info[0].additional_notes && (
+                                <div>
+                                  <span className="text-slate-400 text-sm">Notes</span>
+                                  <p className="text-yellow-400 text-sm mt-1">
+                                    {emergency.medical_info[0].additional_notes}
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-slate-500 text-sm">No medical info available</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Location & Actions */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-slate-300 font-medium">
+                          <MapPin className="w-4 h-4" />
+                          Location
+                        </div>
+                        <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                          <div className="text-sm">
+                            <span className="text-slate-400">Coordinates</span>
+                            <p className="text-white font-mono text-xs mt-1">
+                              {emergency.latitude.toFixed(6)}, {emergency.longitude.toFixed(6)}
+                            </p>
+                          </div>
+                          {emergency.profiles.address && (
+                            <div className="text-sm">
+                              <span className="text-slate-400">Address</span>
+                              <p className="text-white text-xs mt-1">{emergency.profiles.address}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <Button
+                          onClick={() => handleAcceptAndDispatch(emergency.id, emergency.latitude, emergency.longitude)}
+                          disabled={dispatchingId === emergency.id}
+                          className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-6"
+                          size="lg"
+                        >
+                          {dispatchingId === emergency.id ? (
+                            <>
+                              <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                              Dispatching...
+                            </>
+                          ) : (
+                            <>
+                              <Navigation className="mr-2 h-5 w-5" />
+                              Accept & Dispatch Ambulance
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="h-4 w-4" />
-                    <span>Reported: {new Date(emergency.created_at).toLocaleString()}</span>
-                  </div>
-
-                  <Button
-                    onClick={() => handleAccept(emergency.id)}
-                    className="w-full bg-emergency hover:bg-emergency/90"
-                    size="lg"
-                  >
-                    Accept Emergency
-                  </Button>
-                </CardContent>
-              </Card>
-            ))
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };
