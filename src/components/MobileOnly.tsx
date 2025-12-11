@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Smartphone, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Smartphone, AlertTriangle, Hospital, Shield } from "lucide-react";
 
 // Routes that should only work on mobile devices
 const MOBILE_ONLY_ROUTES = ["/", "/auth", "/onboarding", "/dashboard", "/settings"];
@@ -70,11 +71,24 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
           <div className="text-center text-sm text-muted-foreground">
             This app requires mobile sensors like accelerometer and GPS for accident detection and emergency response.
           </div>
-          <div className="border-t pt-4 text-center text-sm">
-            <p className="text-muted-foreground">
-              <strong>Hospital/Admin Dashboard?</strong><br />
-              Access at <code className="bg-muted px-1 rounded">/hospital</code> or <code className="bg-muted px-1 rounded">/admin</code>
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-center text-sm text-muted-foreground font-medium">
+              Hospital/Admin? Access your dashboard:
             </p>
+            <div className="flex gap-2">
+              <Button asChild variant="outline" className="flex-1">
+                <Link to="/hospital">
+                  <Hospital className="mr-2 h-4 w-4" />
+                  Hospital
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="flex-1">
+                <Link to="/admin">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin
+                </Link>
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
