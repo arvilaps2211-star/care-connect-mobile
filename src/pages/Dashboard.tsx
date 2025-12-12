@@ -83,10 +83,17 @@ const Dashboard = () => {
       .eq("user_id", user.id)
       .limit(1);
 
+    // Get medical info
+    const { data: medicalInfo } = await supabase
+      .from("medical_info")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
     // Call edge functions to send notifications
     const notificationPromises = [];
 
-    // SMS notification to guardian
+    // SMS notification to guardian with enhanced info
     if (guardians && guardians.length > 0) {
       notificationPromises.push(
         supabase.functions.invoke("notify-emergency", {
@@ -96,6 +103,13 @@ const Dashboard = () => {
             guardianPhone: guardians[0].contact_number,
             userName: profile.name,
             location: location,
+            userAge: profile.age,
+            userGender: profile.gender,
+            vehicleNumber: profile.vehicle_number,
+            bloodGroup: medicalInfo?.blood_group,
+            medicalHistory: medicalInfo?.medical_history,
+            profilePhotoUrl: profile.profile_photo_url,
+            guardianName: guardians[0].name,
           },
         })
       );

@@ -210,6 +210,7 @@ export type Database = {
           name: string
           onboarding_completed: boolean | null
           phone: string
+          profile_photo_url: string | null
           remarks: string | null
           updated_at: string | null
           user_id: string
@@ -224,6 +225,7 @@ export type Database = {
           name: string
           onboarding_completed?: boolean | null
           phone: string
+          profile_photo_url?: string | null
           remarks?: string | null
           updated_at?: string | null
           user_id: string
@@ -238,6 +240,7 @@ export type Database = {
           name?: string
           onboarding_completed?: boolean | null
           phone?: string
+          profile_photo_url?: string | null
           remarks?: string | null
           updated_at?: string | null
           user_id?: string

@@ -7,13 +7,44 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface EmergencyNotificationRequest {
+  emergencyId: string;
+  userPhone: string;
+  guardianPhone: string;
+  userName: string;
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  userAge?: number;
+  userGender?: string;
+  vehicleNumber?: string;
+  bloodGroup?: string;
+  medicalHistory?: string;
+  profilePhotoUrl?: string;
+  guardianName?: string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { emergencyId, userPhone, guardianPhone, userName, location } = await req.json();
+    const {
+      emergencyId,
+      userPhone,
+      guardianPhone,
+      userName,
+      location,
+      userAge,
+      userGender,
+      vehicleNumber,
+      bloodGroup,
+      medicalHistory,
+      profilePhotoUrl,
+      guardianName,
+    }: EmergencyNotificationRequest = await req.json();
 
     console.log("Processing emergency notification:", {
       emergencyId,
@@ -21,6 +52,8 @@ serve(async (req) => {
       guardianPhone,
       userName,
       location,
+      userAge,
+      bloodGroup,
     });
 
     // Initialize Supabase client
@@ -28,10 +61,38 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Note: SMS functionality requires Twilio credentials to be configured
-    // Users need to add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER
-    // as secrets for SMS notifications to work
+    // Generate Google Maps link for easy navigation
+    const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     
+    // Build comprehensive SMS message
+    let smsMessage = `🚨 EMERGENCY ALERT 🚨\n\n`;
+    smsMessage += `${userName} has triggered an emergency!\n\n`;
+    
+    // Location with clickable link
+    smsMessage += `📍 LOCATION:\n${mapsLink}\n\n`;
+    
+    // User details
+    smsMessage += `👤 USER INFO:\n`;
+    smsMessage += `• Phone: ${userPhone}\n`;
+    if (userAge) smsMessage += `• Age: ${userAge}\n`;
+    if (userGender) smsMessage += `• Gender: ${userGender}\n`;
+    if (vehicleNumber) smsMessage += `• Vehicle: ${vehicleNumber}\n`;
+    
+    // Medical info (critical for responders)
+    if (bloodGroup || medicalHistory) {
+      smsMessage += `\n🏥 MEDICAL INFO:\n`;
+      if (bloodGroup) smsMessage += `• Blood: ${bloodGroup}\n`;
+      if (medicalHistory) smsMessage += `• History: ${medicalHistory}\n`;
+    }
+    
+    // Add profile photo link if available
+    if (profilePhotoUrl) {
+      smsMessage += `\n📷 Photo: ${profilePhotoUrl}\n`;
+    }
+    
+    smsMessage += `\n⚠️ Please respond immediately!`;
+
+    // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
@@ -40,9 +101,6 @@ serve(async (req) => {
 
     if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
       try {
-        // Send SMS to guardian
-        const message = `EMERGENCY ALERT: ${userName} has triggered an emergency at location: ${location.latitude}, ${location.longitude}. Please respond immediately.`;
-        
         const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
         
         const response = await fetch(
@@ -56,14 +114,14 @@ serve(async (req) => {
             body: new URLSearchParams({
               To: guardianPhone,
               From: twilioPhoneNumber,
-              Body: message,
+              Body: smsMessage,
             }),
           }
         );
 
         if (response.ok) {
           smsStatus = "sent";
-          console.log("SMS sent successfully");
+          console.log("SMS sent successfully to guardian:", guardianPhone);
         } else {
           const error = await response.text();
           console.error("Failed to send SMS:", error);
@@ -74,10 +132,10 @@ serve(async (req) => {
         smsStatus = "error";
       }
     } else {
-      console.log("Twilio credentials not configured. Skipping SMS.");
+      console.log("Twilio credentials not configured. SMS message would be:", smsMessage);
     }
 
-    // Update emergency record
+    // Update emergency record with notification status
     const { error: updateError } = await supabase
       .from("emergencies")
       .update({
@@ -94,6 +152,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         smsStatus,
+        mapsLink,
         message: smsStatus === "not_configured" 
           ? "Emergency logged. SMS requires Twilio configuration."
           : smsStatus === "sent"
