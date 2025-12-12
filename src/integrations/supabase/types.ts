@@ -140,6 +140,47 @@ export type Database = {
         }
         Relationships: []
       }
+      hospital_verifications: {
+        Row: {
+          certificate_url: string | null
+          hospital_id: string | null
+          id: string
+          license_url: string
+          status: string
+          submitted_at: string
+          user_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          certificate_url?: string | null
+          hospital_id?: string | null
+          id?: string
+          license_url: string
+          status?: string
+          submitted_at?: string
+          user_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          certificate_url?: string | null
+          hospital_id?: string | null
+          id?: string
+          license_url?: string
+          status?: string
+          submitted_at?: string
+          user_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hospital_verifications_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hospitals: {
         Row: {
           contact_number: string | null
