@@ -47,7 +47,7 @@ const HospitalDashboard = () => {
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      navigate("/auth");
+      navigate("/hospital/login");
       return;
     }
 
@@ -58,7 +58,7 @@ const HospitalDashboard = () => {
       .single();
 
     if (!roles || roles.role !== "hospital") {
-      navigate("/");
+      navigate("/hospital/login");
       return;
     }
 

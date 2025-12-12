@@ -78,7 +78,7 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
             </p>
             <div className="flex gap-2">
               <Button asChild className="flex-1">
-                <Link to="/hospital">
+                <Link to="/hospital/login">
                   <Hospital className="mr-2 h-4 w-4" />
                   CareConnect Hospitals
                 </Link>
