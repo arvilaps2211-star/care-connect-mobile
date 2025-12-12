@@ -49,9 +49,9 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
               <Smartphone className="w-12 h-12 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Mobile App Only</CardTitle>
+          <CardTitle className="text-2xl">CareConnect Mobile</CardTitle>
           <CardDescription className="text-base">
-            CareConnect user app is designed exclusively for mobile devices to provide emergency response services.
+            User Emergency Response App - Mobile devices only
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -59,33 +59,34 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-emergency mt-0.5" />
               <div>
-                <p className="font-semibold">How to Access:</p>
-                <ul className="text-sm text-muted-foreground space-y-1 mt-2">
-                  <li>• Open this app on your mobile device</li>
-                  <li>• Download from the App Store or Play Store (coming soon)</li>
-                  <li>• Scan the QR code with your phone camera</li>
-                </ul>
+                <p className="font-semibold">Mobile Device Required</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This app uses your phone's accelerometer & GPS for automatic accident detection.
+                </p>
               </div>
             </div>
           </div>
           <div className="text-center text-sm text-muted-foreground">
-            This app requires mobile sensors like accelerometer and GPS for accident detection and emergency response.
+            Please open CareConnect Mobile on your smartphone for emergency detection and response.
           </div>
           <div className="border-t pt-4 space-y-3">
-            <p className="text-center text-sm text-muted-foreground font-medium">
-              Hospital/Admin? Access your dashboard:
+            <p className="text-center text-sm font-medium">
+              Looking for CareConnect Hospitals?
+            </p>
+            <p className="text-center text-xs text-muted-foreground">
+              Desktop application for hospital staff to receive and respond to emergencies
             </p>
             <div className="flex gap-2">
-              <Button asChild variant="outline" className="flex-1">
+              <Button asChild className="flex-1">
                 <Link to="/hospital">
                   <Hospital className="mr-2 h-4 w-4" />
-                  Hospital
+                  CareConnect Hospitals
                 </Link>
               </Button>
               <Button asChild variant="outline" className="flex-1">
                 <Link to="/admin">
                   <Shield className="mr-2 h-4 w-4" />
-                  Admin
+                  Admin Panel
                 </Link>
               </Button>
             </div>

@@ -194,7 +194,7 @@ const HospitalDashboard = () => {
                 <Activity className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Hospital Command Center</h1>
+                <h1 className="text-2xl font-bold text-white">CareConnect Hospitals</h1>
                 {hospitalInfo && (
                   <p className="text-slate-400">{hospitalInfo.name}</p>
                 )}
