@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
+import HospitalLogin from "./pages/HospitalLogin";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import AmbulanceDashboard from "./pages/AmbulanceDashboard";
 import AdminPanel from "./pages/AdminPanel";
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/hospital/login" element={<HospitalLogin />} />
             <Route path="/hospital" element={<HospitalDashboard />} />
             <Route path="/ambulance" element={<AmbulanceDashboard />} />
             <Route path="/admin" element={<AdminPanel />} />
