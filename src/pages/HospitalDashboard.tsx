@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Bell, Activity, Archive, FileX, CheckCircle, Ambulance } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Bell, Activity, Archive, FileX, CheckCircle, Ambulance, Map } from "lucide-react";
+import GPSTracker from "@/components/GPSTracker";
 
 interface Emergency {
   id: string;
@@ -43,8 +44,28 @@ const HospitalDashboard = () => {
   const [userRole, setUserRole] = useState<UserRole>("hospital");
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("active");
+  const [showMap, setShowMap] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Watch current location for GPS tracking
+  useEffect(() => {
+    if (showMap && navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          setCurrentLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => console.error("GPS error:", error),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, [showMap]);
 
   useEffect(() => {
     checkAuth();
@@ -189,7 +210,7 @@ const HospitalDashboard = () => {
     window.open(url, '_blank');
   };
 
-  const handleAcceptAndDispatch = async (emergencyId: string, lat: number, lng: number) => {
+  const handleAcceptAndDispatch = async (emergencyId: string, lat: number, lng: number, emergency: Emergency) => {
     setDispatchingId(emergencyId);
     
     try {
@@ -204,14 +225,17 @@ const HospitalDashboard = () => {
 
       if (error) throw error;
 
+      // Set up GPS tracking
+      setSelectedEmergency(emergency);
+      setShowMap(true);
+
       toast({
         title: userRole === "hospital" ? "Emergency Accepted" : "Ambulance Dispatched",
         description: userRole === "hospital" 
-          ? "Ambulance dispatch initiated. Opening navigation..." 
-          : "En route to patient. Opening navigation...",
+          ? "Ambulance dispatch initiated. GPS tracking enabled." 
+          : "En route to patient. GPS tracking enabled.",
       });
 
-      openGoogleMaps(lat, lng);
       fetchAllEmergencies();
     } catch (error: any) {
       toast({
@@ -399,7 +423,7 @@ const HospitalDashboard = () => {
 
             {showActions && !isExpired && (
               <Button
-                onClick={() => handleAcceptAndDispatch(emergency.id, emergency.latitude, emergency.longitude)}
+                onClick={() => handleAcceptAndDispatch(emergency.id, emergency.latitude, emergency.longitude, emergency)}
                 disabled={dispatchingId === emergency.id}
                 className={`w-full font-semibold py-6 ${
                   userRole === "ambulance" 
@@ -550,6 +574,60 @@ const HospitalDashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* GPS Tracking Map */}
+        {showMap && selectedEmergency && (
+          <Card className="bg-slate-800/50 border-slate-700 mb-8">
+            <CardHeader className="border-b border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-500/10 p-2 rounded-lg">
+                    <Map className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-white">Live GPS Tracking</CardTitle>
+                    <CardDescription className="text-slate-400">
+                      Tracking route to: {selectedEmergency.profiles.name}
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openGoogleMaps(selectedEmergency.latitude, selectedEmergency.longitude)}
+                    className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                  >
+                    <Navigation className="w-4 h-4 mr-2" />
+                    Open in Google Maps
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowMap(false);
+                      setSelectedEmergency(null);
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    Close Map
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <GPSTracker
+                currentLocation={currentLocation || undefined}
+                emergencyLocation={{
+                  latitude: selectedEmergency.latitude,
+                  longitude: selectedEmergency.longitude,
+                  label: `Emergency - ${selectedEmergency.profiles.name}`,
+                }}
+                height="400px"
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabs for different case statuses */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
