@@ -493,8 +493,22 @@ const HospitalLogin = () => {
           </div>
         </Card>
 
-        <p className="text-center text-slate-500 text-sm mt-6">
-          CareConnect Hospitals © 2024 • Emergency Response System
+        {/* Ambulance Login Link */}
+        <div className="text-center mt-6">
+          <p className="text-slate-400 text-sm">
+            Are you an ambulance service?{" "}
+            <Button
+              variant="link"
+              onClick={() => navigate("/ambulance/login")}
+              className="text-orange-400 hover:text-orange-300 p-0"
+            >
+              Ambulance Login
+            </Button>
+          </p>
+        </div>
+
+        <p className="text-center text-slate-500 text-sm mt-4">
+          CareConnect © 2024 • Emergency Response System
         </p>
       </div>
     </div>
