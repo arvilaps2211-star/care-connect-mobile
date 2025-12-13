@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Bell, Activity, Archive, FileX, CheckCircle } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Bell, Activity, Archive, FileX, CheckCircle, Ambulance } from "lucide-react";
 
 interface Emergency {
   id: string;
@@ -15,6 +15,7 @@ interface Emergency {
   longitude: number;
   status: string;
   accepted_by_hospital: string | null;
+  accepted_by_ambulance: string | null;
   resolved_at: string | null;
   profiles: {
     name: string;
@@ -31,12 +32,15 @@ interface Emergency {
   }[];
 }
 
+type UserRole = "hospital" | "ambulance";
+
 const HospitalDashboard = () => {
   const [activeEmergencies, setActiveEmergencies] = useState<Emergency[]>([]);
   const [acceptedEmergencies, setAcceptedEmergencies] = useState<Emergency[]>([]);
   const [expiredEmergencies, setExpiredEmergencies] = useState<Emergency[]>([]);
   const [loading, setLoading] = useState(true);
-  const [hospitalInfo, setHospitalInfo] = useState<any>(null);
+  const [entityInfo, setEntityInfo] = useState<any>(null);
+  const [userRole, setUserRole] = useState<UserRole>("hospital");
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("active");
   const navigate = useNavigate();
@@ -44,12 +48,17 @@ const HospitalDashboard = () => {
 
   useEffect(() => {
     checkAuth();
-    fetchAllEmergencies();
-    const unsubscribe = subscribeToEmergencies();
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
+
+  useEffect(() => {
+    if (entityInfo) {
+      fetchAllEmergencies();
+      const unsubscribe = subscribeToEmergencies();
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [entityInfo]);
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -64,18 +73,28 @@ const HospitalDashboard = () => {
       .eq("user_id", user.id)
       .single();
 
-    if (!roles || roles.role !== "hospital") {
+    if (!roles || (roles.role !== "hospital" && roles.role !== "ambulance")) {
       navigate("/hospital/login");
       return;
     }
 
-    const { data: hospital } = await supabase
-      .from("hospitals")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
+    setUserRole(roles.role as UserRole);
 
-    setHospitalInfo(hospital);
+    if (roles.role === "hospital") {
+      const { data: hospital } = await supabase
+        .from("hospitals")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      setEntityInfo(hospital);
+    } else if (roles.role === "ambulance") {
+      const { data: ambulance } = await supabase
+        .from("ambulance_services")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+      setEntityInfo(ambulance);
+    }
   };
 
   const fetchAllEmergencies = async () => {
@@ -174,19 +193,22 @@ const HospitalDashboard = () => {
     setDispatchingId(emergencyId);
     
     try {
+      const updateData = userRole === "hospital" 
+        ? { accepted_by_hospital: entityInfo?.id, status: "accepted" }
+        : { accepted_by_ambulance: entityInfo?.id, status: "dispatched" };
+
       const { error } = await supabase
         .from("emergencies")
-        .update({
-          accepted_by_hospital: hospitalInfo?.id,
-          status: "accepted",
-        })
+        .update(updateData)
         .eq("id", emergencyId);
 
       if (error) throw error;
 
       toast({
-        title: "Emergency Accepted",
-        description: "Ambulance dispatch initiated. Opening navigation...",
+        title: userRole === "hospital" ? "Emergency Accepted" : "Ambulance Dispatched",
+        description: userRole === "hospital" 
+          ? "Ambulance dispatch initiated. Opening navigation..." 
+          : "En route to patient. Opening navigation...",
       });
 
       openGoogleMaps(lat, lng);
@@ -252,12 +274,12 @@ const HospitalDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {hospitalInfo && (
+            {entityInfo && (
               <Badge variant="outline" className="border-blue-500/30 text-blue-400">
                 <Navigation className="w-3 h-3 mr-1" />
                 {calculateDistance(
-                  hospitalInfo.latitude,
-                  hospitalInfo.longitude,
+                  entityInfo.latitude,
+                  entityInfo.longitude,
                   emergency.latitude,
                   emergency.longitude
                 )} km away
@@ -379,18 +401,26 @@ const HospitalDashboard = () => {
               <Button
                 onClick={() => handleAcceptAndDispatch(emergency.id, emergency.latitude, emergency.longitude)}
                 disabled={dispatchingId === emergency.id}
-                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-6"
+                className={`w-full font-semibold py-6 ${
+                  userRole === "ambulance" 
+                    ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700" 
+                    : "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"
+                } text-white`}
                 size="lg"
               >
                 {dispatchingId === emergency.id ? (
                   <>
                     <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                    Dispatching...
+                    {userRole === "ambulance" ? "Dispatching..." : "Processing..."}
                   </>
                 ) : (
                   <>
-                    <Navigation className="mr-2 h-5 w-5" />
-                    Accept & Dispatch Ambulance
+                    {userRole === "ambulance" ? (
+                      <Ambulance className="mr-2 h-5 w-5" />
+                    ) : (
+                      <Navigation className="mr-2 h-5 w-5" />
+                    )}
+                    {userRole === "ambulance" ? "Dispatch & Navigate" : "Accept & Dispatch Ambulance"}
                   </>
                 )}
               </Button>
@@ -431,17 +461,34 @@ const HospitalDashboard = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-red-500 to-red-600 p-3 rounded-xl">
-                <Activity className="w-8 h-8 text-white" />
+              <div className={`p-3 rounded-xl ${
+                userRole === "ambulance" 
+                  ? "bg-gradient-to-br from-emerald-500 to-emerald-600" 
+                  : "bg-gradient-to-br from-red-500 to-red-600"
+              }`}>
+                {userRole === "ambulance" ? (
+                  <Ambulance className="w-8 h-8 text-white" />
+                ) : (
+                  <Activity className="w-8 h-8 text-white" />
+                )}
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">CareConnect Hospitals</h1>
-                {hospitalInfo && (
-                  <p className="text-slate-400">{hospitalInfo.name}</p>
+                <h1 className="text-2xl font-bold text-white">
+                  {userRole === "ambulance" ? "CareConnect Ambulance" : "CareConnect Hospitals"}
+                </h1>
+                {entityInfo && (
+                  <p className="text-slate-400">{entityInfo.name}</p>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Badge className={`px-3 py-1.5 ${
+                userRole === "ambulance" 
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" 
+                  : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+              }`}>
+                {userRole === "ambulance" ? "Ambulance Unit" : "Hospital Staff"}
+              </Badge>
               <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                 <span className="text-emerald-400 text-sm font-medium">System Online</span>
