@@ -23,6 +23,7 @@ interface EmergencyNotificationRequest {
   medicalHistory?: string;
   profilePhotoUrl?: string;
   guardianName?: string;
+  responderPhones?: string[]; // Hospital/ambulance phone numbers
 }
 
 serve(async (req) => {
@@ -44,6 +45,7 @@ serve(async (req) => {
       medicalHistory,
       profilePhotoUrl,
       guardianName,
+      responderPhones,
     }: EmergencyNotificationRequest = await req.json();
 
     console.log("Processing emergency notification:", {
@@ -54,6 +56,7 @@ serve(async (req) => {
       location,
       userAge,
       bloodGroup,
+      responderPhones,
     });
 
     // Initialize Supabase client
@@ -65,19 +68,38 @@ serve(async (req) => {
     const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     
     // Build guardian SMS message with simple, clear format
-    const smsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${mapsLink}\n\n📞 Contact: ${userPhone}`;
+    const guardianSmsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${mapsLink}\n\n📞 Contact: ${userPhone}`;
+
+    // Build detailed responder SMS with medical info for hospitals/ambulances
+    let responderSmsMessage = `🚑 EMERGENCY RESPONSE NEEDED!\n\n`;
+    responderSmsMessage += `👤 Patient: ${userName}\n`;
+    responderSmsMessage += `📞 Phone: ${userPhone}\n`;
+    if (userAge) responderSmsMessage += `📅 Age: ${userAge}\n`;
+    if (userGender) responderSmsMessage += `⚧ Gender: ${userGender}\n`;
+    if (vehicleNumber) responderSmsMessage += `🚗 Vehicle: ${vehicleNumber}\n`;
+    
+    responderSmsMessage += `\n🏥 MEDICAL INFO:\n`;
+    responderSmsMessage += `🩸 Blood Group: ${bloodGroup || 'Unknown'}\n`;
+    responderSmsMessage += `📋 History: ${medicalHistory || 'None provided'}\n`;
+    
+    responderSmsMessage += `\n📍 Location:\n${mapsLink}`;
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
-    let smsStatus = "not_configured";
+    let guardianSmsStatus = "not_configured";
+    let responderSmsStatus = "not_configured";
 
-    if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
+    // Helper function to send SMS
+    const sendSms = async (to: string, body: string): Promise<boolean> => {
+      if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+        return false;
+      }
+      
       try {
         const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
-        
         const response = await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
           {
@@ -87,27 +109,73 @@ serve(async (req) => {
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body: new URLSearchParams({
-              To: guardianPhone,
+              To: to,
               From: twilioPhoneNumber,
-              Body: smsMessage,
+              Body: body,
             }),
           }
         );
-
+        
         if (response.ok) {
-          smsStatus = "sent";
-          console.log("SMS sent successfully to guardian:", guardianPhone);
+          console.log("SMS sent successfully to:", to);
+          return true;
         } else {
           const error = await response.text();
-          console.error("Failed to send SMS:", error);
-          smsStatus = "failed";
+          console.error("Failed to send SMS to", to, ":", error);
+          return false;
         }
       } catch (error) {
-        console.error("Error sending SMS:", error);
-        smsStatus = "error";
+        console.error("Error sending SMS to", to, ":", error);
+        return false;
+      }
+    };
+
+    if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
+      // Send SMS to guardian
+      const guardianSuccess = await sendSms(guardianPhone, guardianSmsMessage);
+      guardianSmsStatus = guardianSuccess ? "sent" : "failed";
+
+      // Send SMS to hospitals/ambulances with medical info
+      if (responderPhones && responderPhones.length > 0) {
+        let successCount = 0;
+        for (const phone of responderPhones) {
+          const success = await sendSms(phone, responderSmsMessage);
+          if (success) successCount++;
+        }
+        responderSmsStatus = successCount > 0 ? `sent_${successCount}/${responderPhones.length}` : "failed";
+        console.log(`Responder SMS sent to ${successCount}/${responderPhones.length} recipients`);
+      } else {
+        // Fetch nearby hospitals and ambulances if no specific phones provided
+        const { data: hospitals } = await supabase
+          .from("hospitals")
+          .select("contact_number")
+          .not("contact_number", "is", null)
+          .limit(5);
+
+        const { data: ambulances } = await supabase
+          .from("ambulance_services")
+          .select("contact_number")
+          .limit(5);
+
+        const allResponderPhones = [
+          ...(hospitals?.map(h => h.contact_number) || []),
+          ...(ambulances?.map(a => a.contact_number) || []),
+        ].filter(Boolean);
+
+        if (allResponderPhones.length > 0) {
+          let successCount = 0;
+          for (const phone of allResponderPhones) {
+            const success = await sendSms(phone, responderSmsMessage);
+            if (success) successCount++;
+          }
+          responderSmsStatus = successCount > 0 ? `sent_${successCount}/${allResponderPhones.length}` : "failed";
+          console.log(`Responder SMS sent to ${successCount}/${allResponderPhones.length} nearby responders`);
+        }
       }
     } else {
-      console.log("Twilio credentials not configured. SMS message would be:", smsMessage);
+      console.log("Twilio credentials not configured.");
+      console.log("Guardian SMS would be:", guardianSmsMessage);
+      console.log("Responder SMS would be:", responderSmsMessage);
     }
 
     // Update emergency record with notification status
@@ -115,7 +183,7 @@ serve(async (req) => {
       .from("emergencies")
       .update({
         notified_at: new Date().toISOString(),
-        guardian_notified: smsStatus === "sent",
+        guardian_notified: guardianSmsStatus === "sent",
       })
       .eq("id", emergencyId);
 
@@ -126,11 +194,12 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        smsStatus,
+        guardianSmsStatus,
+        responderSmsStatus,
         mapsLink,
-        message: smsStatus === "not_configured" 
+        message: guardianSmsStatus === "not_configured" 
           ? "Emergency logged. SMS requires Twilio configuration."
-          : smsStatus === "sent"
+          : guardianSmsStatus === "sent"
           ? "Emergency notification sent successfully"
           : "Emergency logged but SMS failed",
       }),
