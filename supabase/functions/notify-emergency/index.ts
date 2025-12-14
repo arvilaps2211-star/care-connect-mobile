@@ -61,36 +61,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Generate Google Maps link for easy navigation
+    // Generate shareable Google Maps link for easy navigation
     const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     
-    // Build comprehensive SMS message
-    let smsMessage = `🚨 EMERGENCY ALERT 🚨\n\n`;
-    smsMessage += `${userName} has triggered an emergency!\n\n`;
-    
-    // Location with clickable link
-    smsMessage += `📍 LOCATION:\n${mapsLink}\n\n`;
-    
-    // User details
-    smsMessage += `👤 USER INFO:\n`;
-    smsMessage += `• Phone: ${userPhone}\n`;
-    if (userAge) smsMessage += `• Age: ${userAge}\n`;
-    if (userGender) smsMessage += `• Gender: ${userGender}\n`;
-    if (vehicleNumber) smsMessage += `• Vehicle: ${vehicleNumber}\n`;
-    
-    // Medical info (critical for responders)
-    if (bloodGroup || medicalHistory) {
-      smsMessage += `\n🏥 MEDICAL INFO:\n`;
-      if (bloodGroup) smsMessage += `• Blood: ${bloodGroup}\n`;
-      if (medicalHistory) smsMessage += `• History: ${medicalHistory}\n`;
-    }
-    
-    // Add profile photo link if available
-    if (profilePhotoUrl) {
-      smsMessage += `\n📷 Photo: ${profilePhotoUrl}\n`;
-    }
-    
-    smsMessage += `\n⚠️ Please respond immediately!`;
+    // Build guardian SMS message with simple, clear format
+    const smsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${mapsLink}\n\n📞 Contact: ${userPhone}`;
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
