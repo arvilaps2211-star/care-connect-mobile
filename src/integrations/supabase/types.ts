@@ -322,6 +322,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      register_hospital: {
+        Args: {
+          p_certificate_url?: string
+          p_contact_number: string
+          p_hospital_name: string
+          p_latitude: number
+          p_license_url: string
+          p_longitude: number
+          p_user_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "hospital" | "ambulance" | "user"

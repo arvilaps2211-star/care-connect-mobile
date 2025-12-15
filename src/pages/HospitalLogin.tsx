@@ -136,47 +136,19 @@ const HospitalLogin = () => {
         }
       }
 
-      // Create hospital record
-      const { data: hospitalData, error: hospitalError } = await supabase
-        .from("hospitals")
-        .insert({
-          name: hospitalName,
-          contact_number: contactNumber,
-          latitude: parseFloat(latitude),
-          longitude: parseFloat(longitude),
-          user_id: userId,
-        })
-        .select()
-        .single();
-
-      if (hospitalError) throw hospitalError;
-
-      // Create verification record
-      const { error: verificationError } = await supabase
-        .from("hospital_verifications")
-        .insert({
-          hospital_id: hospitalData.id,
-          user_id: userId,
-          license_url: licenseUrlData.publicUrl,
-          certificate_url: certificateUrl,
-          status: "approved", // Auto-approve as per user requirement
+      // Use security definer function to register hospital (bypasses RLS)
+      const { data: hospitalId, error: registerError } = await supabase
+        .rpc('register_hospital', {
+          p_user_id: userId,
+          p_hospital_name: hospitalName,
+          p_contact_number: contactNumber,
+          p_latitude: parseFloat(latitude),
+          p_longitude: parseFloat(longitude),
+          p_license_url: licenseUrlData.publicUrl,
+          p_certificate_url: certificateUrl,
         });
 
-      if (verificationError) {
-        console.error("Verification record error:", verificationError);
-      }
-
-      // Assign hospital role
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: userId,
-          role: "hospital",
-        });
-
-      if (roleError) {
-        console.error("Role assignment error:", roleError);
-      }
+      if (registerError) throw registerError;
 
       toast({
         title: "Registration Successful",
