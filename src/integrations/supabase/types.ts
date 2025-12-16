@@ -49,6 +49,7 @@ export type Database = {
           accepted_by_ambulance: string | null
           accepted_by_hospital: string | null
           created_at: string | null
+          dispatched_to_ambulance: string | null
           guardian_notified: boolean | null
           id: string
           latitude: number | null
@@ -62,6 +63,7 @@ export type Database = {
           accepted_by_ambulance?: string | null
           accepted_by_hospital?: string | null
           created_at?: string | null
+          dispatched_to_ambulance?: string | null
           guardian_notified?: boolean | null
           id?: string
           latitude?: number | null
@@ -75,6 +77,7 @@ export type Database = {
           accepted_by_ambulance?: string | null
           accepted_by_hospital?: string | null
           created_at?: string | null
+          dispatched_to_ambulance?: string | null
           guardian_notified?: boolean | null
           id?: string
           latitude?: number | null
@@ -84,7 +87,15 @@ export type Database = {
           status?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "emergencies_dispatched_to_ambulance_fkey"
+            columns: ["dispatched_to_ambulance"]
+            isOneToOne: false
+            referencedRelation: "ambulance_services"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fcm_tokens: {
         Row: {
@@ -139,6 +150,42 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      hospital_ambulances: {
+        Row: {
+          ambulance_id: string
+          created_at: string | null
+          hospital_id: string
+          id: string
+        }
+        Insert: {
+          ambulance_id: string
+          created_at?: string | null
+          hospital_id: string
+          id?: string
+        }
+        Update: {
+          ambulance_id?: string
+          created_at?: string | null
+          hospital_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hospital_ambulances_ambulance_id_fkey"
+            columns: ["ambulance_id"]
+            isOneToOne: false
+            referencedRelation: "ambulance_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hospital_ambulances_hospital_id_fkey"
+            columns: ["hospital_id"]
+            isOneToOne: false
+            referencedRelation: "hospitals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       hospital_verifications: {
         Row: {
@@ -321,6 +368,18 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      register_ambulance_for_hospital: {
+        Args: {
+          p_contact_number: string
+          p_driver_name?: string
+          p_hospital_id: string
+          p_latitude: number
+          p_longitude: number
+          p_service_name: string
+          p_vehicle_number?: string
+        }
+        Returns: string
       }
       register_hospital: {
         Args: {

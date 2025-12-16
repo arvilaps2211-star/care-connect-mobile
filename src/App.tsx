@@ -11,7 +11,6 @@ import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import HospitalLogin from "./pages/HospitalLogin";
 import HospitalDashboard from "./pages/HospitalDashboard";
-import AmbulanceLogin from "./pages/AmbulanceLogin";
 import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 
@@ -32,8 +31,6 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
             <Route path="/hospital/login" element={<HospitalLogin />} />
             <Route path="/hospital" element={<HospitalDashboard />} />
-            <Route path="/ambulance/login" element={<AmbulanceLogin />} />
-            <Route path="/ambulance" element={<HospitalDashboard />} />
             <Route path="/admin" element={<AdminPanel />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
