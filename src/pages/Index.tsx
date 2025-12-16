@@ -31,9 +31,6 @@ const Index = () => {
       } else if (role.role === "hospital") {
         navigate("/hospital");
         return;
-      } else if (role.role === "ambulance") {
-        navigate("/ambulance");
-        return;
       }
     }
 
