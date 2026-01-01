@@ -314,6 +314,30 @@ const HospitalDashboard = () => {
 
       if (error) throw error;
 
+      // Send notification to ambulance driver via edge function
+      try {
+        const { error: notifyError } = await supabase.functions.invoke('notify-ambulance-dispatch', {
+          body: {
+            emergencyId: emergencyToDispatch.id,
+            ambulanceId: selectedAmbulanceId,
+            patientName: emergencyToDispatch.profiles.name,
+            patientPhone: emergencyToDispatch.profiles.phone,
+            location: {
+              latitude: emergencyToDispatch.latitude,
+              longitude: emergencyToDispatch.longitude,
+            },
+          },
+        });
+        
+        if (notifyError) {
+          console.error("Failed to send notification:", notifyError);
+        } else {
+          console.log("Ambulance driver notified successfully");
+        }
+      } catch (notifyErr) {
+        console.error("Notification error:", notifyErr);
+      }
+
       // Set up GPS tracking
       setSelectedEmergency(emergencyToDispatch);
       setShowMap(true);
@@ -321,7 +345,7 @@ const HospitalDashboard = () => {
 
       toast({
         title: "Ambulance Dispatched",
-        description: "The ambulance will decide whether to accept this case.",
+        description: "The ambulance driver has been notified via SMS.",
       });
 
       fetchAllEmergencies();

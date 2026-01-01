@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   LogOut, AlertCircle, MapPin, Phone, User, Heart, Navigation, 
-  Activity, CheckCircle, X, Truck, ArrowLeft, Clock
+  Activity, CheckCircle, X, Truck, ArrowLeft, Clock, Bell, BellOff
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
 
@@ -50,9 +50,44 @@ const AmbulanceDriverDashboard = () => {
   const [showMap, setShowMap] = useState(false);
   const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if (!("Notification" in window)) {
+      toast({
+        title: "Not Supported",
+        description: "Push notifications are not supported in this browser",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
+      setNotificationsEnabled(true);
+      toast({
+        title: "Notifications Enabled",
+        description: "You'll receive alerts when new cases are dispatched",
+      });
+    } else {
+      toast({
+        title: "Notifications Blocked",
+        description: "Enable notifications in browser settings to receive alerts",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Check notification permission on mount
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      setNotificationsEnabled(true);
+    }
+  }, []);
 
   // Watch current location for GPS tracking
   useEffect(() => {
@@ -164,13 +199,41 @@ const AmbulanceDriverDashboard = () => {
     setLoading(false);
   };
 
+  const showBrowserNotification = (title: string, body: string) => {
+    if (notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+        icon: "/favicon.ico",
+        tag: "ambulance-dispatch",
+        requireInteraction: true,
+      });
+    }
+  };
+
   const subscribeToCases = () => {
     const channel = supabase
       .channel("ambulance-emergency-changes")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
+          schema: "public",
+          table: "emergencies",
+          filter: `dispatched_to_ambulance=eq.${ambulanceId}`,
+        },
+        (payload) => {
+          console.log("New case dispatched:", payload);
+          showBrowserNotification(
+            "🚨 New Case Dispatched!",
+            "A new emergency case has been assigned to you. Tap to view."
+          );
+          fetchCases();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
           schema: "public",
           table: "emergencies",
         },
@@ -482,6 +545,21 @@ const AmbulanceDriverDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {!notificationsEnabled ? (
+                <Button
+                  variant="outline"
+                  onClick={requestNotificationPermission}
+                  className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                >
+                  <BellOff className="w-4 h-4 mr-2" />
+                  Enable Notifications
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                  <Bell className="w-3 h-3 text-emerald-400" />
+                  <span className="text-emerald-400 text-sm">Notifications On</span>
+                </div>
+              )}
               <Badge className="px-3 py-1.5 bg-orange-500/10 text-orange-400 border-orange-500/20">
                 <Truck className="w-3 h-3 mr-1" />
                 Driver View
