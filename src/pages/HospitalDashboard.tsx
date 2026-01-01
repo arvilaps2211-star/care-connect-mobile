@@ -846,9 +846,20 @@ const HospitalDashboard = () => {
                             <p className="text-slate-400 text-sm">{amb.contact_number}</p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => handleRemoveAmbulance(amb.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => window.open(`/ambulance/driver?id=${amb.id}`, '_blank')} 
+                            className="text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+                          >
+                            <Navigation className="w-3 h-3 mr-1" />
+                            Driver View
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveAmbulance(amb.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
