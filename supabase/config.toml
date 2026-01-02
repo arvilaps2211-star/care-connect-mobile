@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.notify-ambulance-dispatch]
 verify_jwt = false
+
+[functions.notify-hospital-acceptance]
+verify_jwt = false
