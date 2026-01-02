@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   LogOut, AlertCircle, MapPin, Phone, User, Heart, Navigation, 
-  Activity, CheckCircle, X, Truck, ArrowLeft, Clock, Bell, BellOff
+  Activity, CheckCircle, X, Truck, ArrowLeft, Clock, Bell, BellOff, Timer
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
+import { calculateETA, getETAStatus } from "@/utils/eta";
 
 interface Emergency {
   id: string;
@@ -352,18 +353,19 @@ const AmbulanceDriverDashboard = () => {
     window.open(url, '_blank');
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return (R * c).toFixed(1);
+  const getEmergencyETA = (emergency: Emergency) => {
+    if (!currentLocation) return null;
+    return calculateETA(
+      currentLocation,
+      { latitude: emergency.latitude, longitude: emergency.longitude }
+    );
   };
 
-  const renderCaseCard = (emergency: Emergency, isInTransit: boolean) => (
+  const renderCaseCard = (emergency: Emergency, isInTransit: boolean) => {
+    const eta = getEmergencyETA(emergency);
+    const etaStatus = eta ? getETAStatus(eta.minutes) : null;
+    
+    return (
     <Card key={emergency.id} className={`bg-slate-800/50 border-l-4 ${isInTransit ? 'border-l-blue-500' : 'border-l-orange-500'} border-slate-700`}>
       <CardHeader className={`${isInTransit ? 'bg-blue-500/5' : 'bg-orange-500/5'} border-b border-slate-700`}>
         <div className="flex items-center justify-between">
@@ -381,12 +383,20 @@ const AmbulanceDriverDashboard = () => {
               </CardDescription>
             </div>
           </div>
-          {currentLocation && (
-            <Badge variant="outline" className="border-blue-500/30 text-blue-400">
-              <Navigation className="w-3 h-3 mr-1" />
-              {calculateDistance(currentLocation.latitude, currentLocation.longitude, emergency.latitude, emergency.longitude)} km away
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {eta && etaStatus && (
+              <Badge className={`${etaStatus.bgColor} ${etaStatus.color} border-0`}>
+                <Timer className="w-3 h-3 mr-1" />
+                ETA: {eta.formatted}
+              </Badge>
+            )}
+            {eta && (
+              <Badge variant="outline" className="border-blue-500/30 text-blue-400">
+                <Navigation className="w-3 h-3 mr-1" />
+                {eta.distance} km
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-6">
@@ -520,6 +530,7 @@ const AmbulanceDriverDashboard = () => {
       </CardContent>
     </Card>
   );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">

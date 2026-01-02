@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Heart } from "lucide-react";
+import { Loader2, Heart, Smartphone, Shield, Bell } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -75,96 +75,142 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-emergency/10 p-4">
-      <Card className="w-full max-w-md shadow-glow">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-gradient-emergency p-4 rounded-full">
-              <Heart className="w-8 h-8 text-white" />
-            </div>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-red-600 via-red-500 to-orange-500">
+      {/* Mobile App Header */}
+      <div className="p-6 text-center">
+        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-4">
+          <Smartphone className="w-4 h-4 text-white" />
+          <span className="text-white text-sm font-medium">Mobile App</span>
+        </div>
+      </div>
+
+      {/* App Branding */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
+        <div className="text-center mb-8">
+          <div className="bg-white p-5 rounded-3xl shadow-2xl mb-4 inline-block">
+            <Heart className="w-12 h-12 text-red-500" />
           </div>
-          <CardTitle className="text-3xl font-bold">CareConnect</CardTitle>
-          <CardDescription>
-            {isLogin ? "Welcome back! Sign in to continue." : "Create your emergency response profile"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAuth} className="space-y-4">
-            {!isLogin && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+1 234 567 8900"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                  />
-                </div>
-              </>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-            >
-              {isLoading ? (
+          <h1 className="text-4xl font-bold text-white mb-2">CareConnect</h1>
+          <p className="text-white/80 text-lg">Your Personal Emergency Response</p>
+        </div>
+
+        {/* Features Pills */}
+        <div className="flex flex-wrap justify-center gap-2 mb-6">
+          <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <Shield className="w-3.5 h-3.5 text-white" />
+            <span className="text-white text-xs">Instant SOS</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full">
+            <Bell className="w-3.5 h-3.5 text-white" />
+            <span className="text-white text-xs">Guardian Alerts</span>
+          </div>
+        </div>
+
+        <Card className="w-full max-w-sm shadow-2xl border-0 bg-white">
+          <CardHeader className="space-y-1 text-center pb-4">
+            <CardTitle className="text-2xl font-bold text-gray-900">
+              {isLogin ? "Welcome Back" : "Get Started"}
+            </CardTitle>
+            <CardDescription className="text-gray-500">
+              {isLogin ? "Sign in to access your emergency profile" : "Create your emergency response profile"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAuth} className="space-y-4">
+              {!isLogin && (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Please wait...
+                  <div className="space-y-2">
+                    <Label htmlFor="name" className="text-gray-700">Full Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="John Doe"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      className="bg-gray-50 border-gray-200"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-gray-700">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+91 98765 43210"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      className="bg-gray-50 border-gray-200"
+                    />
+                  </div>
                 </>
-              ) : isLogin ? (
-                "Sign In"
-              ) : (
-                "Create Account"
               )}
-            </Button>
-          </form>
-          <div className="mt-4 text-center text-sm">
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:underline"
-            >
-              {isLogin ? "Need an account? Sign up" : "Already have an account? Sign in"}
-            </button>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-gray-700">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="bg-gray-50 border-gray-200"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-gray-700">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="bg-gray-50 border-gray-200"
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-6"
+                size="lg"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Please wait...
+                  </>
+                ) : isLogin ? (
+                  "Sign In"
+                ) : (
+                  "Create Account"
+                )}
+              </Button>
+            </form>
+            <div className="mt-4 text-center text-sm">
+              <button
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-red-500 hover:underline font-medium"
+              >
+                {isLogin ? "Need an account? Sign up" : "Already have an account? Sign in"}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Hospital Link */}
+        <div className="mt-6 text-center">
+          <p className="text-white/60 text-sm mb-2">Are you a hospital administrator?</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/hospital/login")}
+            className="bg-white/10 border-white/30 text-white hover:bg-white/20"
+          >
+            Go to Hospital Portal
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

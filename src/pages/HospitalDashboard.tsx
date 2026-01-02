@@ -9,8 +9,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
+import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
 
 interface Emergency {
   id: string;
@@ -245,15 +246,28 @@ const HospitalDashboard = () => {
     };
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return (R * c).toFixed(1);
+  const getEmergencyETA = (emergency: Emergency, fromAmbulanceId?: string) => {
+    // If ambulance specified, use its location; otherwise use hospital location
+    let fromLocation = entityInfo ? { latitude: entityInfo.latitude, longitude: entityInfo.longitude } : null;
+    
+    if (fromAmbulanceId) {
+      const ambulance = ambulances.find(a => a.id === fromAmbulanceId);
+      if (ambulance) {
+        fromLocation = { latitude: ambulance.latitude, longitude: ambulance.longitude };
+      }
+    }
+    
+    if (!fromLocation) return null;
+    return calculateETA(fromLocation, { latitude: emergency.latitude, longitude: emergency.longitude });
+  };
+
+  const getDistanceFromHospital = (emergency: Emergency): string => {
+    if (!entityInfo) return "N/A";
+    const distance = calculateDistance(
+      { latitude: entityInfo.latitude, longitude: entityInfo.longitude },
+      { latitude: emergency.latitude, longitude: emergency.longitude }
+    );
+    return distance.toFixed(1);
   };
 
   const openGoogleMaps = (lat: number, lng: number) => {
@@ -496,7 +510,11 @@ const HospitalDashboard = () => {
     return ambulance?.name || "Unknown";
   };
 
-  const renderEmergencyCard = (emergency: Emergency, cardType: "active" | "accepted" | "dispatched" | "expired") => (
+  const renderEmergencyCard = (emergency: Emergency, cardType: "active" | "accepted" | "dispatched" | "expired") => {
+    const eta = getEmergencyETA(emergency, emergency.dispatched_to_ambulance || undefined);
+    const etaStatus = eta ? getETAStatus(eta.minutes) : null;
+    
+    return (
     <Card key={emergency.id} className={`bg-slate-800/50 border-l-4 ${
       cardType === "expired" ? 'border-l-slate-500' : 
       cardType === "dispatched" ? 'border-l-orange-500' :
@@ -539,18 +557,22 @@ const HospitalDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {eta && etaStatus && cardType !== "expired" && (
+              <Badge className={`${etaStatus.bgColor} ${etaStatus.color} border-0`}>
+                <Timer className="w-3 h-3 mr-1" />
+                ETA: {eta.formatted}
+              </Badge>
+            )}
             {cardType === "dispatched" && emergency.dispatched_to_ambulance && (
               <Badge variant="outline" className="border-orange-500/30 text-orange-400">
                 <Truck className="w-3 h-3 mr-1" />
                 {getAmbulanceName(emergency.dispatched_to_ambulance)}
               </Badge>
             )}
-            {entityInfo && (
-              <Badge variant="outline" className="border-blue-500/30 text-blue-400">
-                <Navigation className="w-3 h-3 mr-1" />
-                {calculateDistance(entityInfo.latitude, entityInfo.longitude, emergency.latitude, emergency.longitude)} km
-              </Badge>
-            )}
+            <Badge variant="outline" className="border-blue-500/30 text-blue-400">
+              <Navigation className="w-3 h-3 mr-1" />
+              {getDistanceFromHospital(emergency)} km
+            </Badge>
           </div>
         </div>
       </CardHeader>
@@ -675,6 +697,7 @@ const HospitalDashboard = () => {
       </CardContent>
     </Card>
   );
+  };
 
   const renderEmptyState = (icon: React.ReactNode, title: string, description: string) => (
     <Card className="bg-slate-800/50 border-slate-700">
@@ -702,6 +725,10 @@ const HospitalDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Badge className="px-3 py-1.5 bg-slate-800/80 text-slate-400 border-slate-700">
+                <Monitor className="w-3 h-3 mr-1" />
+                Desktop Portal
+              </Badge>
               <Badge className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border-blue-500/20">Hospital Staff</Badge>
               <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -948,7 +975,7 @@ const HospitalDashboard = () => {
                     <h3 className="text-white font-medium">{amb.name}</h3>
                     <p className="text-slate-400 text-sm">{amb.contact_number}</p>
                     {emergencyToDispatch && (
-                      <p className="text-blue-400 text-xs mt-1">{calculateDistance(amb.latitude, amb.longitude, emergencyToDispatch.latitude, emergencyToDispatch.longitude)} km from emergency</p>
+                      <p className="text-blue-400 text-xs mt-1">{calculateDistance({ latitude: amb.latitude, longitude: amb.longitude }, { latitude: emergencyToDispatch.latitude, longitude: emergencyToDispatch.longitude }).toFixed(1)} km from emergency</p>
                     )}
                   </div>
                 </div>
