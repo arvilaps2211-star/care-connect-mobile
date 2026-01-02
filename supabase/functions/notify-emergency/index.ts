@@ -25,6 +25,28 @@ interface EmergencyNotificationRequest {
   guardianName?: string;
 }
 
+// Reverse geocode to get address from coordinates
+async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      {
+        headers: {
+          'User-Agent': 'CareConnect Emergency App'
+        }
+      }
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+  } catch (error) {
+    console.error("Geocoding error:", error);
+  }
+  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -52,11 +74,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get exact address from coordinates
+    console.log("Fetching address for coordinates:", location.latitude, location.longitude);
+    const exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
+    console.log("Resolved address:", exactAddress);
+
     // Generate shareable Google Maps link for easy navigation
     const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     
-    // Build guardian SMS message with simple, clear format
-    const guardianSmsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${mapsLink}\n\n📞 Contact: ${userPhone}`;
+    // Build guardian SMS message with exact address
+    const guardianSmsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${exactAddress}\n\n🗺️ Maps: ${mapsLink}\n\n📞 Contact: ${userPhone}`;
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");

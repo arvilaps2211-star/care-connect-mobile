@@ -289,9 +289,33 @@ const HospitalDashboard = () => {
 
       if (error) throw error;
 
+      // Notify guardian that hospital has accepted the case
+      try {
+        const { error: notifyError } = await supabase.functions.invoke('notify-hospital-acceptance', {
+          body: {
+            emergencyId: emergency.id,
+            hospitalId: entityInfo?.id,
+            hospitalName: entityInfo?.name,
+            hospitalPhone: entityInfo?.contact_number,
+            patientLocation: {
+              latitude: emergency.latitude,
+              longitude: emergency.longitude,
+            },
+          },
+        });
+        
+        if (notifyError) {
+          console.error("Failed to notify guardian:", notifyError);
+        } else {
+          console.log("Guardian notified of hospital acceptance");
+        }
+      } catch (notifyErr) {
+        console.error("Guardian notification error:", notifyErr);
+      }
+
       toast({
         title: "Emergency Accepted",
-        description: "Case is now in your queue. Dispatch an ambulance when ready.",
+        description: "Guardian has been notified. Dispatch an ambulance when ready.",
       });
 
       fetchAllEmergencies();
