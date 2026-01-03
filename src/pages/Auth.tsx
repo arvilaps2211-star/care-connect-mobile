@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Heart, Smartphone, Shield, Bell } from "lucide-react";
+import { Loader2, Heart } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -76,14 +76,6 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-red-600 via-red-500 to-orange-500">
-      {/* Mobile App Header */}
-      <div className="p-6 text-center">
-        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full mb-4">
-          <Smartphone className="w-4 h-4 text-white" />
-          <span className="text-white text-sm font-medium">Mobile App</span>
-        </div>
-      </div>
-
       {/* App Branding */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
         <div className="text-center mb-8">
@@ -92,18 +84,6 @@ const Auth = () => {
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">CareConnect</h1>
           <p className="text-white/80 text-lg">Your Personal Emergency Response</p>
-        </div>
-
-        {/* Features Pills */}
-        <div className="flex flex-wrap justify-center gap-2 mb-6">
-          <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full">
-            <Shield className="w-3.5 h-3.5 text-white" />
-            <span className="text-white text-xs">Instant SOS</span>
-          </div>
-          <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full">
-            <Bell className="w-3.5 h-3.5 text-white" />
-            <span className="text-white text-xs">Guardian Alerts</span>
-          </div>
         </div>
 
         <Card className="w-full max-w-sm shadow-2xl border-0 bg-white">
@@ -198,18 +178,6 @@ const Auth = () => {
           </CardContent>
         </Card>
 
-        {/* Hospital Link */}
-        <div className="mt-6 text-center">
-          <p className="text-white/60 text-sm mb-2">Are you a hospital administrator?</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/hospital/login")}
-            className="bg-white/10 border-white/30 text-white hover:bg-white/20"
-          >
-            Go to Hospital Portal
-          </Button>
-        </div>
       </div>
     </div>
   );
