@@ -1,9 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import SplashScreen from "@/components/SplashScreen";
 
 const Index = () => {
   const navigate = useNavigate();
+  const [showSplash, setShowSplash] = useState(true);
+  const [authCheckComplete, setAuthCheckComplete] = useState(false);
+  const [targetRoute, setTargetRoute] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -13,7 +17,8 @@ const Index = () => {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
-      navigate("/auth");
+      setTargetRoute("/auth");
+      setAuthCheckComplete(true);
       return;
     }
 
@@ -26,10 +31,12 @@ const Index = () => {
 
     if (role) {
       if (role.role === "admin") {
-        navigate("/admin");
+        setTargetRoute("/admin");
+        setAuthCheckComplete(true);
         return;
       } else if (role.role === "hospital") {
-        navigate("/hospital");
+        setTargetRoute("/hospital");
+        setAuthCheckComplete(true);
         return;
       }
     }
@@ -41,12 +48,33 @@ const Index = () => {
       .single();
 
     if (profile?.onboarding_completed) {
-      navigate("/dashboard");
+      setTargetRoute("/dashboard");
     } else {
-      navigate("/onboarding");
+      setTargetRoute("/onboarding");
+    }
+    setAuthCheckComplete(true);
+  };
+
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+    if (targetRoute) {
+      navigate(targetRoute);
     }
   };
 
+  // If auth check is done and splash is still showing, wait for splash
+  // If auth check is done and splash is done, navigate
+  useEffect(() => {
+    if (!showSplash && targetRoute) {
+      navigate(targetRoute);
+    }
+  }, [showSplash, targetRoute, navigate]);
+
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} minDuration={2500} />;
+  }
+
+  // Fallback loading state while navigating
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
