@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,29 @@ const Auth = () => {
   const [name, setName] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (session?.user) {
+          // Defer navigation to avoid deadlock
+          setTimeout(() => {
+            navigate("/");
+          }, 0);
+        }
+      }
+    );
+
+    // Check if already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        navigate("/");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,11 +74,16 @@ const Auth = () => {
         if (error) throw error;
 
         if (data.user) {
-          await supabase.from("profiles").insert({
+          // Insert profile
+          const { error: profileError } = await supabase.from("profiles").insert({
             user_id: data.user.id,
             name,
             phone,
           });
+
+          if (profileError) {
+            console.error("Profile creation error:", profileError);
+          }
 
           toast({
             title: "Account created!",
@@ -64,6 +92,7 @@ const Auth = () => {
         }
       }
     } catch (error: any) {
+      console.error("Auth error:", error);
       toast({
         title: "Error",
         description: error.message,
