@@ -83,23 +83,24 @@ const GPSTracker = ({
         />
         
         {currentLocation && (
-          <>
-            <RecenterMap location={currentLocation} />
-            <Marker 
-              position={[currentLocation.latitude, currentLocation.longitude]}
-              icon={ambulanceIcon}
-            >
-              <Popup>
-                <div className="text-center">
-                  <strong>🚑 {currentLocation.label || 'Ambulance Location'}</strong>
-                  <br />
-                  <small>
-                    {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
-                  </small>
-                </div>
-              </Popup>
-            </Marker>
-          </>
+          <RecenterMap location={currentLocation} />
+        )}
+        
+        {currentLocation && (
+          <Marker 
+            position={[currentLocation.latitude, currentLocation.longitude]}
+            icon={ambulanceIcon}
+          >
+            <Popup>
+              <div className="text-center">
+                <strong>🚑 {currentLocation.label || 'Ambulance Location'}</strong>
+                <br />
+                <small>
+                  {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+                </small>
+              </div>
+            </Popup>
+          </Marker>
         )}
         
         {emergencyLocation && (
