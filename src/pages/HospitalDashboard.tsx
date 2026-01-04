@@ -270,9 +270,9 @@ const HospitalDashboard = () => {
     return distance.toFixed(1);
   };
 
-  const openGoogleMaps = (lat: number, lng: number) => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-    window.open(url, '_blank');
+  const openMapModal = (emergency: Emergency) => {
+    setSelectedEmergency(emergency);
+    setShowMap(true);
   };
 
   const handleAcceptEmergency = async (emergency: Emergency) => {
@@ -683,7 +683,7 @@ const HospitalDashboard = () => {
                   <p className="text-white text-xs mt-1">{emergency.profiles.address}</p>
                 </div>
               )}
-              <Button variant="outline" size="sm" onClick={() => openGoogleMaps(emergency.latitude, emergency.longitude)} className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+              <Button variant="outline" size="sm" onClick={() => openMapModal(emergency)} className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                 <Navigation className="w-4 h-4 mr-2" />
                 View on Map
               </Button>
@@ -1010,6 +1010,44 @@ const HospitalDashboard = () => {
             <Button variant="ghost" onClick={() => setShowDispatchModal(false)} className="text-slate-400">Cancel</Button>
             <Button onClick={handleDispatchAmbulance} disabled={!selectedAmbulanceId || dispatchingId !== null} className="bg-orange-500 hover:bg-orange-600">
               {dispatchingId ? "Dispatching..." : "Dispatch Selected"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Map View Dialog */}
+      <Dialog open={showMap} onOpenChange={setShowMap}>
+        <DialogContent className="bg-slate-800 border-slate-700 max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-red-400" />
+              Emergency Location
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {selectedEmergency && (
+                <span>
+                  Patient: {selectedEmergency.profiles.name} • 
+                  Coordinates: {selectedEmergency.latitude.toFixed(6)}, {selectedEmergency.longitude.toFixed(6)}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="h-[400px] rounded-lg overflow-hidden border border-slate-600">
+            {selectedEmergency && (
+              <GPSTracker
+                currentLocation={currentLocation || (entityInfo ? { latitude: entityInfo.latitude, longitude: entityInfo.longitude, label: "Hospital" } : undefined)}
+                emergencyLocation={{
+                  latitude: selectedEmergency.latitude,
+                  longitude: selectedEmergency.longitude,
+                  label: `Patient: ${selectedEmergency.profiles.name}`
+                }}
+                height="400px"
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowMap(false)} className="text-slate-400">
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
