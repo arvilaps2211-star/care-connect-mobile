@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor } from "lucide-react";
-import GPSTracker from "@/components/GPSTracker";
+import OpenStreetMapEmbed from "@/components/OpenStreetMapEmbed";
 import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
 
 interface Emergency {
@@ -834,7 +834,12 @@ const HospitalDashboard = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <GPSTracker currentLocation={currentLocation || undefined} emergencyLocation={{ latitude: selectedEmergency.latitude, longitude: selectedEmergency.longitude, label: `Emergency - ${selectedEmergency.profiles.name}` }} height="400px" />
+              <OpenStreetMapEmbed
+                latitude={selectedEmergency.latitude}
+                longitude={selectedEmergency.longitude}
+                title={`Live tracking: ${selectedEmergency.profiles.name}`}
+                height="400px"
+              />
             </CardContent>
           </Card>
         )}
@@ -1034,13 +1039,10 @@ const HospitalDashboard = () => {
           </DialogHeader>
           <div className="h-[400px] rounded-lg overflow-hidden border border-slate-600">
             {selectedEmergency && (
-              <GPSTracker
-                currentLocation={currentLocation || (entityInfo ? { latitude: entityInfo.latitude, longitude: entityInfo.longitude, label: "Hospital" } : undefined)}
-                emergencyLocation={{
-                  latitude: selectedEmergency.latitude,
-                  longitude: selectedEmergency.longitude,
-                  label: `Patient: ${selectedEmergency.profiles.name}`
-                }}
+              <OpenStreetMapEmbed
+                latitude={selectedEmergency.latitude}
+                longitude={selectedEmergency.longitude}
+                title={`Emergency location: ${selectedEmergency.profiles.name}`}
                 height="400px"
               />
             )}
