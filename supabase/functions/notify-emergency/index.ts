@@ -47,6 +47,30 @@ async function getAddressFromCoordinates(lat: number, lng: number): Promise<stri
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
+// Helper function to format phone number with country code
+function formatPhoneNumber(phone: string): string {
+  // Remove any whitespace
+  let cleaned = phone.replace(/\s+/g, "").trim();
+  
+  // If it starts with +, it's already formatted
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+  
+  // If it starts with 0, remove it and add +91 (India)
+  if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+  
+  // If it's 10 digits, assume India (+91)
+  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
+    return `+91${cleaned}`;
+  }
+  
+  // Otherwise return as is with + prefix
+  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -59,13 +83,25 @@ serve(async (req) => {
       guardianPhone,
       userName,
       location,
+      userAge,
+      userGender,
+      bloodGroup,
+      medicalHistory,
+      guardianName,
     }: EmergencyNotificationRequest = await req.json();
+
+    // Format phone numbers with country code
+    const formattedGuardianPhone = formatPhoneNumber(guardianPhone);
+    const formattedUserPhone = formatPhoneNumber(userPhone);
 
     console.log("Processing emergency notification:", {
       emergencyId,
-      userPhone,
-      guardianPhone,
+      userPhone: formattedUserPhone,
+      guardianPhone: formattedGuardianPhone,
       userName,
+      userAge,
+      userGender,
+      bloodGroup,
       location,
     });
 
@@ -82,13 +118,39 @@ serve(async (req) => {
     // Generate shareable Google Maps link for easy navigation
     const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
     
-    // Build guardian SMS message with exact address
-    const guardianSmsMessage = `🚨 EMERGENCY ALERT!\n\nEnsure ${userName} is safe...!\n\n📍 Location:\n${exactAddress}\n\n🗺️ Maps: ${mapsLink}\n\n📞 Contact: ${userPhone}`;
+    // Build guardian SMS message with patient details
+    let guardianSmsMessage = `🚨 EMERGENCY ALERT!\n\n`;
+    guardianSmsMessage += `${guardianName ? `Dear ${guardianName}, ` : ""}${userName} needs help!\n\n`;
+    
+    // Add patient details if available
+    if (userAge || userGender || bloodGroup) {
+      guardianSmsMessage += `👤 Patient Info:\n`;
+      if (userAge) guardianSmsMessage += `Age: ${userAge}\n`;
+      if (userGender) guardianSmsMessage += `Gender: ${userGender}\n`;
+      if (bloodGroup) guardianSmsMessage += `Blood: ${bloodGroup}\n`;
+      guardianSmsMessage += `\n`;
+    }
+    
+    if (medicalHistory) {
+      guardianSmsMessage += `⚕️ Medical: ${medicalHistory}\n\n`;
+    }
+    
+    guardianSmsMessage += `📍 Location:\n${exactAddress}\n\n`;
+    guardianSmsMessage += `🗺️ Maps: ${mapsLink}\n\n`;
+    guardianSmsMessage += `📞 Contact: ${formattedUserPhone}`;
+
+    console.log("SMS Message prepared:", guardianSmsMessage);
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
+    
+    console.log("Twilio configured:", {
+      hasAccountSid: !!twilioAccountSid,
+      hasAuthToken: !!twilioAuthToken,
+      hasPhoneNumber: !!twilioPhoneNumber,
+    });
 
     let guardianSmsStatus = "not_configured";
 
@@ -104,7 +166,7 @@ serve(async (req) => {
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body: new URLSearchParams({
-              To: guardianPhone,
+              To: formattedGuardianPhone,
               From: twilioPhoneNumber,
               Body: guardianSmsMessage,
             }),
