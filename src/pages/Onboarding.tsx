@@ -65,8 +65,8 @@ const Onboarding = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
-      // Update profile
-      await supabase
+      // Update profile with onboarding_completed flag
+      const { error: profileError } = await supabase
         .from("profiles")
         .update({
           age: age ? parseInt(age) : null,
@@ -78,20 +78,35 @@ const Onboarding = () => {
         })
         .eq("user_id", user.id);
 
-      // Insert medical info
-      await supabase.from("medical_info").insert({
-        user_id: user.id,
-        blood_group: bloodGroup,
-        medical_history: medicalHistory,
-        additional_notes: additionalNotes,
-      });
+      if (profileError) throw profileError;
 
-      // Insert guardians
+      // Upsert medical info (update if exists, insert if not)
+      const { error: medicalError } = await supabase
+        .from("medical_info")
+        .upsert({
+          user_id: user.id,
+          blood_group: bloodGroup,
+          medical_history: medicalHistory,
+          additional_notes: additionalNotes,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (medicalError) throw medicalError;
+
+      // Delete existing guardians and insert new ones
       const validGuardians = guardians.filter(
         (g) => g.name && g.relationship && g.contact
       );
+      
+      // Remove old guardians first
+      await supabase
+        .from("guardians")
+        .delete()
+        .eq("user_id", user.id);
+
+      // Insert new guardians
       if (validGuardians.length > 0) {
-        await supabase.from("guardians").insert(
+        const { error: guardiansError } = await supabase.from("guardians").insert(
           validGuardians.map((g) => ({
             user_id: user.id,
             name: g.name,
@@ -99,6 +114,7 @@ const Onboarding = () => {
             contact_number: g.contact,
           }))
         );
+        if (guardiansError) throw guardiansError;
       }
 
       toast({
@@ -108,6 +124,7 @@ const Onboarding = () => {
 
       navigate("/dashboard");
     } catch (error: any) {
+      console.error("Onboarding error:", error);
       toast({
         title: "Error",
         description: error.message,
