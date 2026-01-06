@@ -11,3 +11,7 @@ verify_jwt = false
 
 [functions.notify-hospital-acceptance]
 verify_jwt = false
+
+[functions.send-test-sms]
+verify_jwt = false
+
