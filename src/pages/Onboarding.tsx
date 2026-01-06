@@ -65,20 +65,44 @@ const Onboarding = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user found");
 
-      // Update profile with onboarding_completed flag
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          age: age ? parseInt(age) : null,
-          gender,
-          address,
-          vehicle_number: vehicleNumber,
-          remarks,
-          onboarding_completed: true,
-        })
-        .eq("user_id", user.id);
+      const profilePatch = {
+        age: age ? parseInt(age) : null,
+        gender,
+        address,
+        vehicle_number: vehicleNumber,
+        remarks,
+        onboarding_completed: true,
+      };
 
-      if (profileError) throw profileError;
+      // Update profile. If no profile row exists yet, create it.
+      const { data: updatedProfile, error: profileUpdateError } = await supabase
+        .from("profiles")
+        .update(profilePatch)
+        .eq("user_id", user.id)
+        .select("user_id, onboarding_completed")
+        .maybeSingle();
+
+      if (profileUpdateError) throw profileUpdateError;
+
+      if (!updatedProfile) {
+        const fallbackName = String((user.user_metadata as any)?.name ?? "").trim();
+        const fallbackPhone = String((user.user_metadata as any)?.phone ?? "").trim();
+
+        if (!fallbackPhone) {
+          throw new Error("Your phone number is missing. Please sign out and sign up again.");
+        }
+
+        const { error: profileInsertError } = await supabase
+          .from("profiles")
+          .insert({
+            user_id: user.id,
+            name: fallbackName || "User",
+            phone: fallbackPhone,
+            ...profilePatch,
+          });
+
+        if (profileInsertError) throw profileInsertError;
+      }
 
       // Upsert medical info (update if exists, insert if not)
       const { error: medicalError } = await supabase
