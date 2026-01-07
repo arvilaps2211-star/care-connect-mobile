@@ -30,12 +30,14 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   // Check if current route is desktop-allowed
-  const isDesktopAllowed = DESKTOP_ALLOWED_ROUTES.some(route => 
-    location.pathname.startsWith(route)
-  );
+  const isDesktopAllowed = DESKTOP_ALLOWED_ROUTES.some((route) => location.pathname.startsWith(route));
 
-  // Allow access if mobile OR if on desktop-allowed route
-  if (isMobile || isDesktopAllowed) {
+  // Dev/preview escape hatch so you can test user flows on desktop
+  const forceMobile = new URLSearchParams(location.search).get("forceMobile") === "1";
+  const allowDesktopInDev = import.meta.env.DEV;
+
+  // Allow access if mobile OR if on desktop-allowed route OR if forced in dev
+  if (isMobile || isDesktopAllowed || forceMobile || allowDesktopInDev) {
     return <>{children}</>;
   }
 
