@@ -162,24 +162,36 @@ const Settings = () => {
 
     setIsSaving(true);
     try {
-      // Use upsert so users who don't yet have a profile row can still save
-      const { error } = await supabase
-        .from("profiles")
-        .upsert(
-          {
-            user_id: userId,
-            name: name.trim(),
-            phone: phone.trim(),
-            age: age ? parseInt(age) : null,
-            gender,
-            address,
-            vehicle_number: vehicleNumber,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
+      const patch = {
+        name: name.trim(),
+        phone: phone.trim(),
+        age: age ? parseInt(age) : null,
+        gender,
+        address,
+        vehicle_number: vehicleNumber,
+        updated_at: new Date().toISOString(),
+      };
 
-      if (error) throw error;
+      // Update first (works even if user_id is not unique)
+      const { data: updated, error: updateError } = await supabase
+        .from("profiles")
+        .update(patch)
+        .eq("user_id", userId)
+        .select("user_id")
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      // Insert if missing
+      if (!updated) {
+        const { error: insertError } = await supabase.from("profiles").insert({
+          user_id: userId,
+          ...patch,
+          onboarding_completed: false,
+        });
+        if (insertError) throw insertError;
+      }
+
       toast({ title: "Saved", description: "Personal information updated." });
       setPersonalOpen(false);
     } catch (e: any) {
@@ -190,20 +202,36 @@ const Settings = () => {
   };
 
   const saveMedicalInfo = async () => {
-    if (!userId) return;
+    if (!userId) {
+      navigate("/auth");
+      return;
+    }
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("medical_info")
-        .upsert({
-          user_id: userId,
-          blood_group: bloodGroup,
-          medical_history: medicalHistory,
-          additional_notes: additionalNotes,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+      const patch = {
+        blood_group: bloodGroup,
+        medical_history: medicalHistory,
+        additional_notes: additionalNotes,
+        updated_at: new Date().toISOString(),
+      };
 
-      if (error) throw error;
+      const { data: updated, error: updateError } = await supabase
+        .from("medical_info")
+        .update(patch)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      if (!updated) {
+        const { error: insertError } = await supabase.from("medical_info").insert({
+          user_id: userId,
+          ...patch,
+        });
+        if (insertError) throw insertError;
+      }
+
       toast({ title: "Saved", description: "Medical information updated." });
       setMedicalOpen(false);
     } catch (e: any) {
