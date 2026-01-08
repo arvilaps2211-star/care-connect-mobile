@@ -57,20 +57,40 @@ const Settings = () => {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadUserData();
-  }, []);
+    // Keep Settings reactive to auth changes (avoids "not saving" when userId wasn't loaded yet)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+      setUserId(nextUserId);
+      if (nextUserId) {
+        // Defer any DB calls; never call Supabase directly inside the auth callback
+        setTimeout(() => {
+          loadUserData(nextUserId);
+        }, 0);
+      } else {
+        navigate("/auth");
+      }
+    });
 
-  const loadUserData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    setUserId(user.id);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const nextUserId = session?.user?.id ?? null;
+      setUserId(nextUserId);
+      if (!nextUserId) {
+        navigate("/auth");
+        return;
+      }
+      loadUserData(nextUserId);
+    });
 
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const loadUserData = async (uid: string) => {
     // Load profile
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("user_id", user.id)
-      .single();
+      .eq("user_id", uid)
+      .maybeSingle();
 
     if (profile) {
       setName(profile.name || "");
@@ -85,8 +105,8 @@ const Settings = () => {
     const { data: medical } = await supabase
       .from("medical_info")
       .select("*")
-      .eq("user_id", user.id)
-      .single();
+      .eq("user_id", uid)
+      .maybeSingle();
 
     if (medical) {
       setBloodGroup(medical.blood_group || "");
@@ -98,10 +118,12 @@ const Settings = () => {
     const { data: guardianData } = await supabase
       .from("guardians")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("user_id", uid);
 
     if (guardianData && guardianData.length > 0) {
       setGuardians(guardianData);
+    } else {
+      setGuardians([]);
     }
   };
 
@@ -124,20 +146,38 @@ const Settings = () => {
   };
 
   const savePersonalInfo = async () => {
-    if (!userId) return;
+    if (!userId) {
+      navigate("/auth");
+      return;
+    }
+
+    if (!name.trim() || !phone.trim()) {
+      toast({
+        title: "Missing info",
+        description: "Name and phone are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // Use upsert so users who don't yet have a profile row can still save
       const { error } = await supabase
         .from("profiles")
-        .update({
-          name,
-          phone,
-          age: age ? parseInt(age) : null,
-          gender,
-          address,
-          vehicle_number: vehicleNumber,
-        })
-        .eq("user_id", userId);
+        .upsert(
+          {
+            user_id: userId,
+            name: name.trim(),
+            phone: phone.trim(),
+            age: age ? parseInt(age) : null,
+            gender,
+            address,
+            vehicle_number: vehicleNumber,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
 
       if (error) throw error;
       toast({ title: "Saved", description: "Personal information updated." });
@@ -174,22 +214,26 @@ const Settings = () => {
   };
 
   const saveGuardians = async () => {
-    if (!userId) return;
+    if (!userId) {
+      navigate("/auth");
+      return;
+    }
     setIsSaving(true);
     try {
       // Delete existing
-      await supabase.from("guardians").delete().eq("user_id", userId);
+      const { error: deleteError } = await supabase.from("guardians").delete().eq("user_id", userId);
+      if (deleteError) throw deleteError;
 
       // Insert new
-      const validGuardians = guardians.filter(g => g.name && g.relationship && g.contact_number);
+      const validGuardians = guardians.filter((g) => g.name && g.relationship && g.contact_number);
       if (validGuardians.length > 0) {
         const { error } = await supabase.from("guardians").insert(
-          validGuardians.map(g => ({
+          validGuardians.map((g) => ({
             user_id: userId,
             name: g.name,
             relationship: g.relationship,
             contact_number: g.contact_number,
-          }))
+          })),
         );
         if (error) throw error;
       }
