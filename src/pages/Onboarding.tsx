@@ -112,33 +112,56 @@ const Onboarding = () => {
         throw new Error("Please enter your phone number to continue.");
       }
 
-      // Upsert profile (creates row if missing, updates if exists)
-      const { error: profileUpsertError } = await supabase
+      // 1) Try update first (works even if user_id is not unique)
+      const { data: updatedProfile, error: profileUpdateError } = await supabase
         .from("profiles")
-        .upsert(
-          {
-            user_id: user.id,
-            name: finalName,
-            phone: finalPhone,
-            ...profilePatch,
-          },
-          { onConflict: "user_id" },
-        );
+        .update({
+          name: finalName,
+          phone: finalPhone,
+          ...profilePatch,
+        })
+        .eq("user_id", user.id)
+        .select("user_id")
+        .maybeSingle();
 
-      if (profileUpsertError) throw profileUpsertError;
+      if (profileUpdateError) throw profileUpdateError;
 
-      // Upsert medical info (update if exists, insert if not)
-      const { error: medicalError } = await supabase
+      // 2) If no row existed, insert
+      if (!updatedProfile) {
+        const { error: profileInsertError } = await supabase.from("profiles").insert({
+          user_id: user.id,
+          name: finalName,
+          phone: finalPhone,
+          ...profilePatch,
+        });
+        if (profileInsertError) throw profileInsertError;
+      }
+
+      // Save medical info (update-if-exists, else insert)
+      const { data: updatedMedical, error: medicalUpdateError } = await supabase
         .from("medical_info")
-        .upsert({
+        .update({
+          blood_group: bloodGroup,
+          medical_history: medicalHistory,
+          additional_notes: additionalNotes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id)
+        .select("id")
+        .maybeSingle();
+
+      if (medicalUpdateError) throw medicalUpdateError;
+
+      if (!updatedMedical) {
+        const { error: medicalInsertError } = await supabase.from("medical_info").insert({
           user_id: user.id,
           blood_group: bloodGroup,
           medical_history: medicalHistory,
           additional_notes: additionalNotes,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-
-      if (medicalError) throw medicalError;
+        });
+        if (medicalInsertError) throw medicalInsertError;
+      }
 
       // Delete existing guardians and insert new ones
       const validGuardians = guardians.filter(
