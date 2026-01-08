@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ const Onboarding = () => {
   const { toast } = useToast();
 
   // Personal Details
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [address, setAddress] = useState("");
@@ -36,6 +38,26 @@ const Onboarding = () => {
 
   const totalSteps = 3;
   const progress = (step / totalSteps) * 100;
+
+  useEffect(() => {
+    // Prefill name/phone from existing profile (preferred) or auth metadata (fallback)
+    const prefill = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("name, phone")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const meta: any = user.user_metadata ?? {};
+      setName(String(profile?.name ?? meta?.name ?? "").trim());
+      setPhone(String(profile?.phone ?? meta?.phone ?? "").trim());
+    };
+
+    prefill();
+  }, []);
 
   const addGuardian = () => {
     setGuardians([...guardians, { name: "", relationship: "", contact: "" }]);
@@ -72,37 +94,38 @@ const Onboarding = () => {
         vehicle_number: vehicleNumber,
         remarks,
         onboarding_completed: true,
+        updated_at: new Date().toISOString(),
       };
 
-      // Update profile. If no profile row exists yet, create it.
-      const { data: updatedProfile, error: profileUpdateError } = await supabase
+      // Ensure we always have the required fields for profiles (name + phone)
+      const { data: existingProfile } = await supabase
         .from("profiles")
-        .update(profilePatch)
+        .select("name, phone")
         .eq("user_id", user.id)
-        .select("user_id, onboarding_completed")
         .maybeSingle();
 
-      if (profileUpdateError) throw profileUpdateError;
+      const meta: any = user.user_metadata ?? {};
+      const finalName = String(name || existingProfile?.name || meta?.name || "User").trim() || "User";
+      const finalPhone = String(phone || existingProfile?.phone || meta?.phone || "").trim();
 
-      if (!updatedProfile) {
-        const fallbackName = String((user.user_metadata as any)?.name ?? "").trim();
-        const fallbackPhone = String((user.user_metadata as any)?.phone ?? "").trim();
-
-        if (!fallbackPhone) {
-          throw new Error("Your phone number is missing. Please sign out and sign up again.");
-        }
-
-        const { error: profileInsertError } = await supabase
-          .from("profiles")
-          .insert({
-            user_id: user.id,
-            name: fallbackName || "User",
-            phone: fallbackPhone,
-            ...profilePatch,
-          });
-
-        if (profileInsertError) throw profileInsertError;
+      if (!finalPhone) {
+        throw new Error("Please enter your phone number to continue.");
       }
+
+      // Upsert profile (creates row if missing, updates if exists)
+      const { error: profileUpsertError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            user_id: user.id,
+            name: finalName,
+            phone: finalPhone,
+            ...profilePatch,
+          },
+          { onConflict: "user_id" },
+        );
+
+      if (profileUpsertError) throw profileUpsertError;
 
       // Upsert medical info (update if exists, insert if not)
       const { error: medicalError } = await supabase
@@ -172,6 +195,26 @@ const Onboarding = () => {
                   Help us know you better
                 </p>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="age">Age</Label>

@@ -29,11 +29,17 @@ const Dashboard = () => {
 
     setUser(user);
 
-    const { data: profileData } = await supabase
+    const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Failed to load profile:", profileError);
+      navigate("/onboarding");
+      return;
+    }
 
     if (!profileData?.onboarding_completed) {
       navigate("/onboarding");
