@@ -14,6 +14,7 @@ import HospitalLogin from "./pages/HospitalLogin";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 
 const queryClient = new QueryClient();
 
@@ -22,23 +23,25 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <MobileOnly>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/hospital/login" element={<HospitalLogin />} />
-            <Route path="/hospital" element={<HospitalDashboard />} />
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </MobileOnly>
-      </BrowserRouter>
+      <AppErrorBoundary>
+        <BrowserRouter>
+          <MobileOnly>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/hospital/login" element={<HospitalLogin />} />
+              <Route path="/hospital" element={<HospitalDashboard />} />
+              <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </MobileOnly>
+        </BrowserRouter>
+      </AppErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>
 );
