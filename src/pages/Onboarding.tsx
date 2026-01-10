@@ -112,56 +112,32 @@ const Onboarding = () => {
         throw new Error("Please enter your phone number to continue.");
       }
 
-      // 1) Try update first (works even if user_id is not unique)
-      const { data: updatedProfile, error: profileUpdateError } = await supabase
-        .from("profiles")
-        .update({
-          name: finalName,
-          phone: finalPhone,
-          ...profilePatch,
-        })
-        .eq("user_id", user.id)
-        .select("user_id")
-        .maybeSingle();
-
-      if (profileUpdateError) throw profileUpdateError;
-
-      // 2) If no row existed, insert
-      if (!updatedProfile) {
-        const { error: profileInsertError } = await supabase.from("profiles").insert({
+      // Upsert profile (now safe with unique constraint on user_id)
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
           user_id: user.id,
           name: finalName,
           phone: finalPhone,
           ...profilePatch,
-        });
-        if (profileInsertError) throw profileInsertError;
-      }
+        },
+        { onConflict: "user_id" }
+      );
 
-      // Save medical info (update-if-exists, else insert)
-      const { data: updatedMedical, error: medicalUpdateError } = await supabase
-        .from("medical_info")
-        .update({
-          blood_group: bloodGroup,
-          medical_history: medicalHistory,
-          additional_notes: additionalNotes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id)
-        .select("id")
-        .maybeSingle();
+      if (profileError) throw profileError;
 
-      if (medicalUpdateError) throw medicalUpdateError;
-
-      if (!updatedMedical) {
-        const { error: medicalInsertError } = await supabase.from("medical_info").insert({
+      // Upsert medical info (now safe with unique constraint on user_id)
+      const { error: medicalError } = await supabase.from("medical_info").upsert(
+        {
           user_id: user.id,
           blood_group: bloodGroup,
           medical_history: medicalHistory,
           additional_notes: additionalNotes,
           updated_at: new Date().toISOString(),
-        });
-        if (medicalInsertError) throw medicalInsertError;
-      }
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (medicalError) throw medicalError;
 
       // Delete existing guardians and insert new ones
       const validGuardians = guardians.filter(

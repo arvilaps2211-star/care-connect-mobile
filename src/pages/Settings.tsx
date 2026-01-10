@@ -172,25 +172,17 @@ const Settings = () => {
         updated_at: new Date().toISOString(),
       };
 
-      // Update first (works even if user_id is not unique)
-      const { data: updated, error: updateError } = await supabase
-        .from("profiles")
-        .update(patch)
-        .eq("user_id", userId)
-        .select("user_id")
-        .maybeSingle();
-
-      if (updateError) throw updateError;
-
-      // Insert if missing
-      if (!updated) {
-        const { error: insertError } = await supabase.from("profiles").insert({
+      // Upsert profile (now safe with unique constraint on user_id)
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
           user_id: userId,
           ...patch,
-          onboarding_completed: false,
-        });
-        if (insertError) throw insertError;
-      }
+          onboarding_completed: true,
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (profileError) throw profileError;
 
       toast({ title: "Saved", description: "Personal information updated." });
       setPersonalOpen(false);
@@ -215,22 +207,16 @@ const Settings = () => {
         updated_at: new Date().toISOString(),
       };
 
-      const { data: updated, error: updateError } = await supabase
-        .from("medical_info")
-        .update(patch)
-        .eq("user_id", userId)
-        .select("id")
-        .maybeSingle();
-
-      if (updateError) throw updateError;
-
-      if (!updated) {
-        const { error: insertError } = await supabase.from("medical_info").insert({
+      // Upsert medical info (now safe with unique constraint on user_id)
+      const { error: medicalError } = await supabase.from("medical_info").upsert(
+        {
           user_id: userId,
           ...patch,
-        });
-        if (insertError) throw insertError;
-      }
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (medicalError) throw medicalError;
 
       toast({ title: "Saved", description: "Medical information updated." });
       setMedicalOpen(false);
