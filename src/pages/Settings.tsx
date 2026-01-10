@@ -136,10 +136,29 @@ const Settings = () => {
       const { data, error } = await supabase.functions.invoke("send-test-sms", {
         body: { toPhone: testPhone.trim(), location },
       });
+
       if (error) throw error;
-      toast({ title: "Test SMS sent", description: `Sent to ${data?.to ?? testPhone.trim()}. Check your phone now.` });
+
+      if (data?.success === false) {
+        // Edge function returns 200 with success=false for provider-level errors (e.g. Twilio trial limitations).
+        toast({
+          title: "Test SMS failed",
+          description: data?.providerResponse ? String(data.providerResponse) : String(data?.error ?? "Unable to send test SMS"),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Test SMS sent",
+        description: `Sent to ${data?.to ?? testPhone.trim()}. Check your phone now.`,
+      });
     } catch (e: any) {
-      toast({ title: "Test SMS failed", description: e?.message ?? "Unable to send test SMS", variant: "destructive" });
+      toast({
+        title: "Test SMS failed",
+        description: e?.message ?? "Unable to send test SMS",
+        variant: "destructive",
+      });
     } finally {
       setIsSendingTest(false);
     }

@@ -150,6 +150,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error("Test SMS failed:", responseText);
+      // Return 200 so the client can show the provider error without treating the function call as a crash.
       return new Response(
         JSON.stringify({
           success: false,
@@ -158,7 +159,7 @@ serve(async (req) => {
           providerResponse: responseText,
         }),
         {
-          status: 502,
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
