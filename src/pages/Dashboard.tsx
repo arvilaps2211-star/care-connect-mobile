@@ -21,8 +21,17 @@ const Dashboard = () => {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      console.error("Dashboard auth.getUser error:", userError);
+    }
+
     if (!user) {
+      console.warn("Dashboard: no user session, redirecting to /auth");
       navigate("/auth");
       return;
     }
@@ -36,12 +45,29 @@ const Dashboard = () => {
       .maybeSingle();
 
     if (profileError) {
-      console.error("Failed to load profile:", profileError);
+      console.error("Dashboard: Failed to load profile", { userId: user.id, profileError });
+      toast({
+        title: "Profile error",
+        description: profileError.message,
+        variant: "destructive",
+      });
       navigate("/onboarding");
       return;
     }
 
-    if (!profileData?.onboarding_completed) {
+    if (!profileData) {
+      console.warn("Dashboard: profile missing for user", user.id);
+      toast({
+        title: "Complete setup",
+        description: "We couldn't find your profile. Please complete onboarding.",
+        variant: "destructive",
+      });
+      navigate("/onboarding");
+      return;
+    }
+
+    if (!profileData.onboarding_completed) {
+      console.warn("Dashboard: onboarding not completed for user", user.id);
       navigate("/onboarding");
       return;
     }
