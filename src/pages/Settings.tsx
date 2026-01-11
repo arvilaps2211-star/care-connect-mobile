@@ -137,7 +137,36 @@ const Settings = () => {
         body: { toPhone: testPhone.trim(), location },
       });
 
-      if (error) throw error;
+      // If the backend returns a non-2xx status, Supabase sets `error`.
+      // Try to extract the JSON body so we can show provider errors (e.g., Twilio trial 21608).
+      if (error) {
+        const ctx = (error as any)?.context;
+        const rawBody = ctx?.body;
+
+        let parsed: any = null;
+        if (typeof rawBody === "string") {
+          try {
+            parsed = JSON.parse(rawBody);
+          } catch {
+            parsed = null;
+          }
+        } else if (rawBody && typeof rawBody === "object") {
+          parsed = rawBody;
+        }
+
+        const providerMsg = parsed?.providerResponse
+          ? String(parsed.providerResponse)
+          : parsed?.error
+            ? String(parsed.error)
+            : error.message;
+
+        toast({
+          title: "Test SMS failed",
+          description: providerMsg,
+          variant: "destructive",
+        });
+        return;
+      }
 
       if (data?.success === false) {
         // Edge function returns 200 with success=false for provider-level errors (e.g. Twilio trial limitations).
