@@ -178,9 +178,12 @@ const Settings = () => {
         return;
       }
 
+      const twilioStatus = data?.twilioFetched?.status ?? data?.twilio?.status;
+      const sid = data?.twilioFetched?.sid ?? data?.twilio?.sid;
+
       toast({
-        title: "Test SMS sent",
-        description: `Sent to ${data?.to ?? testPhone.trim()}. Check your phone now.`,
+        title: "Test SMS accepted",
+        description: `To ${data?.to ?? testPhone.trim()} • Status: ${twilioStatus ?? "queued"}${sid ? ` • SID: ${sid}` : ""}`,
       });
     } catch (e: any) {
       toast({
