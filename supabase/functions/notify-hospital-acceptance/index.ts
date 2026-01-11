@@ -19,6 +19,18 @@ interface HospitalAcceptanceRequest {
   };
 }
 
+// Ensure phone has country code (defaults to +91 India if missing)
+function formatPhoneNumber(phone: string): string {
+  let cleaned = phone.replace(/[\s\-\(\)]/g, "");
+  if (!cleaned.startsWith("+")) {
+    if (cleaned.startsWith("0")) {
+      cleaned = cleaned.substring(1);
+    }
+    cleaned = "+91" + cleaned;
+  }
+  return cleaned;
+}
+
 // Reverse geocode to get address from coordinates
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
   try {
@@ -85,16 +97,15 @@ serve(async (req) => {
     // Get user profile
     const { data: profile } = await supabase
       .from("profiles")
-      .select("name")
+      .select("name, address")
       .eq("user_id", emergency.user_id)
       .single();
 
-    // Get guardian info
+    // Get ALL guardians for this user
     const { data: guardians } = await supabase
       .from("guardians")
       .select("name, contact_number")
-      .eq("user_id", emergency.user_id)
-      .limit(1);
+      .eq("user_id", emergency.user_id);
 
     if (!guardians || guardians.length === 0) {
       console.log("No guardian found for user");
@@ -107,8 +118,8 @@ serve(async (req) => {
       );
     }
 
-    const guardian = guardians[0];
     const userName = profile?.name || "Your loved one";
+    const patientAddress = profile?.address || "Address not available";
 
     // Get address from hospital location if not provided
     let finalHospitalAddress = hospitalAddress;
@@ -125,60 +136,98 @@ serve(async (req) => {
       }
     }
 
-    // Build SMS message with hospital details
-    const smsMessage = `✅ HOSPITAL UPDATE\n\n${userName} has been accepted by:\n\n🏥 ${hospitalName}\n📍 ${finalHospitalAddress || "Address not available"}${hospitalPhone ? `\n📞 ${hospitalPhone}` : ""}\n\nThe hospital is preparing to dispatch an ambulance.`;
+    // Build patient location link
+    const patientMapsLink = patientLocation
+      ? `https://www.google.com/maps?q=${patientLocation.latitude},${patientLocation.longitude}`
+      : "";
+
+    // Build SMS message with hospital details and patient address
+    const smsMessage = `✅ HOSPITAL UPDATE\n\n${userName} has been accepted by:\n\n🏥 ${hospitalName}\n📍 Hospital: ${finalHospitalAddress || "Address not available"}${hospitalPhone ? `\n📞 ${hospitalPhone}` : ""}\n\n📋 Patient Address: ${patientAddress}${patientMapsLink ? `\n📍 Patient Location: ${patientMapsLink}` : ""}\n\nThe hospital is preparing to dispatch an ambulance.`;
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
-    let smsStatus = "not_configured";
+    const results: any[] = [];
 
     if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
-      try {
-        const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
-        const response = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Basic ${authHeader}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              To: guardian.contact_number,
-              From: twilioPhoneNumber,
-              Body: smsMessage,
-            }),
-          }
-        );
+      const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
 
-        if (response.ok) {
-          smsStatus = "sent";
-          console.log("Hospital acceptance SMS sent to guardian:", guardian.contact_number);
-        } else {
-          const error = await response.text();
-          console.error("Failed to send SMS:", error);
-          smsStatus = "failed";
+      // Send SMS to ALL guardians
+      for (const guardian of guardians) {
+        const formattedPhone = formatPhoneNumber(guardian.contact_number);
+        
+        try {
+          const response = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Basic ${auth}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                To: formattedPhone,
+                From: twilioPhoneNumber,
+                Body: smsMessage,
+              }),
+            }
+          );
+
+          const responseText = await response.text();
+          let twilio: any = null;
+          try {
+            twilio = JSON.parse(responseText);
+          } catch {
+            twilio = { raw: responseText };
+          }
+
+          console.log("Hospital acceptance SMS response:", {
+            ok: response.ok,
+            status: response.status,
+            to: formattedPhone,
+            guardianName: guardian.name,
+            sid: twilio?.sid,
+            twilioStatus: twilio?.status,
+            errorCode: twilio?.error_code,
+          });
+
+          results.push({
+            guardianName: guardian.name,
+            to: formattedPhone,
+            success: response.ok,
+            sid: twilio?.sid,
+            twilioStatus: twilio?.status,
+            errorCode: twilio?.code,
+          });
+        } catch (error: any) {
+          console.error("Error sending SMS to guardian:", guardian.name, error);
+          results.push({
+            guardianName: guardian.name,
+            to: formattedPhone,
+            success: false,
+            error: error?.message,
+          });
         }
-      } catch (error) {
-        console.error("Error sending SMS:", error);
-        smsStatus = "error";
       }
     } else {
       console.log("Twilio credentials not configured. SMS message would be:", smsMessage);
     }
 
+    const anySuccess = results.some((r) => r.success);
+    const allSuccess = results.every((r) => r.success);
+
     return new Response(
       JSON.stringify({
         success: true,
-        smsStatus,
-        message: smsStatus === "sent" 
-          ? "Guardian notified of hospital acceptance"
-          : smsStatus === "not_configured"
+        smsStatus: results.length === 0 ? "not_configured" : anySuccess ? (allSuccess ? "all_sent" : "partial") : "failed",
+        results,
+        message: anySuccess 
+          ? `Notified ${results.filter(r => r.success).length} of ${results.length} guardian(s)`
+          : results.length === 0 
           ? "SMS requires Twilio configuration"
-          : "Failed to send SMS to guardian",
+          : "Failed to send SMS to guardians",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
