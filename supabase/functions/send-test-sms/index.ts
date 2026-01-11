@@ -142,11 +142,45 @@ serve(async (req) => {
 
     const responseText = await response.text();
 
+    let twilio: any = null;
+    try {
+      twilio = JSON.parse(responseText);
+    } catch {
+      twilio = { raw: responseText };
+    }
+
     console.log("Test SMS response:", {
       ok: response.ok,
       status: response.status,
       to: formattedTo,
+      sid: twilio?.sid,
+      twilioStatus: twilio?.status,
+      errorCode: twilio?.error_code,
+      errorMessage: twilio?.error_message,
     });
+
+    // Optional immediate status fetch (helps debug cases where Twilio accepts but later fails)
+    let twilioFetched: any = null;
+    if (response.ok && twilio?.sid) {
+      try {
+        const fetchRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages/${twilio.sid}.json`,
+          {
+            headers: {
+              Authorization: `Basic ${auth}`,
+            },
+          }
+        );
+        const fetchText = await fetchRes.text();
+        try {
+          twilioFetched = JSON.parse(fetchText);
+        } catch {
+          twilioFetched = { raw: fetchText };
+        }
+      } catch (e) {
+        console.error("Test SMS status fetch failed:", e);
+      }
+    }
 
     if (!response.ok) {
       console.error("Test SMS failed:", responseText);
@@ -157,6 +191,7 @@ serve(async (req) => {
           status: response.status,
           error: "Failed to send SMS",
           providerResponse: responseText,
+          twilio,
         }),
         {
           status: 200,
@@ -171,6 +206,8 @@ serve(async (req) => {
         status: response.status,
         to: formattedTo,
         mapsLink,
+        twilio,
+        twilioFetched,
       }),
       {
         status: 200,

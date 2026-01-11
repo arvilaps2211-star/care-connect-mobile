@@ -173,12 +173,30 @@ serve(async (req) => {
           }
         );
 
+        const responseText = await response.text();
+        let twilio: any = null;
+        try {
+          twilio = JSON.parse(responseText);
+        } catch {
+          twilio = { raw: responseText };
+        }
+
+        console.log("Guardian SMS provider response:", {
+          ok: response.ok,
+          status: response.status,
+          to: formattedGuardianPhone,
+          sid: twilio?.sid,
+          twilioStatus: twilio?.status,
+          errorCode: twilio?.error_code,
+          errorMessage: twilio?.error_message,
+        });
+
         if (response.ok) {
-          guardianSmsStatus = "sent";
-          console.log("SMS sent successfully to guardian:", guardianPhone);
+          // Twilio returning 201 means accepted/queued; delivery may still fail later.
+          guardianSmsStatus = String(twilio?.status ?? "queued");
+          console.log("SMS accepted for guardian:", { guardianPhone, sid: twilio?.sid, status: guardianSmsStatus });
         } else {
-          const error = await response.text();
-          console.error("Failed to send SMS:", error);
+          console.error("Failed to send SMS:", responseText);
           guardianSmsStatus = "failed";
         }
       } catch (error) {
