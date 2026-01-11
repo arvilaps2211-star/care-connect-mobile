@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentPosition } from "@/utils/geolocation";
@@ -25,7 +25,6 @@ const Settings = () => {
   const { toast } = useToast();
 
   // Test SMS
-  const [testPhone, setTestPhone] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Sheets
@@ -127,14 +126,26 @@ const Settings = () => {
     }
   };
 
-  const canSend = useMemo(() => testPhone.trim().length > 0 && !isSendingTest, [testPhone, isSendingTest]);
+  
 
   const handleSendTestSms = async () => {
+    // Send test SMS to all guardians, not user's phone
+    const validGuardians = guardians.filter((g) => g.contact_number?.trim());
+    if (validGuardians.length === 0) {
+      toast({
+        title: "No guardians configured",
+        description: "Please add at least one guardian with a phone number first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSendingTest(true);
     try {
       const location = await getCurrentPosition();
+      const guardianPhones = validGuardians.map((g) => g.contact_number.trim());
       const { data, error } = await supabase.functions.invoke("send-test-sms", {
-        body: { toPhone: testPhone.trim(), location },
+        body: { guardianPhones, location },
       });
 
       // If the backend returns a non-2xx status, Supabase sets `error`.
@@ -169,21 +180,33 @@ const Settings = () => {
       }
 
       if (data?.success === false) {
-        // Edge function returns 200 with success=false for provider-level errors (e.g. Twilio trial limitations).
         toast({
           title: "Test SMS failed",
-          description: data?.providerResponse ? String(data.providerResponse) : String(data?.error ?? "Unable to send test SMS"),
+          description: data?.error ?? "Unable to send test SMS",
           variant: "destructive",
         });
         return;
       }
 
-      const twilioStatus = data?.twilioFetched?.status ?? data?.twilio?.status;
-      const sid = data?.twilioFetched?.sid ?? data?.twilio?.sid;
+      // Multi-guardian results
+      const results = data?.results ?? [];
+      const successCount = results.filter((r: any) => r.success).length;
+      const failCount = results.length - successCount;
+
+      if (successCount === 0 && results.length > 0) {
+        // All failed
+        const firstError = results[0]?.errorMessage ?? results[0]?.error ?? "Delivery failed";
+        toast({
+          title: "Test SMS failed",
+          description: `All ${results.length} message(s) failed: ${firstError}`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
-        title: "Test SMS accepted",
-        description: `To ${data?.to ?? testPhone.trim()} • Status: ${twilioStatus ?? "queued"}${sid ? ` • SID: ${sid}` : ""}`,
+        title: data?.allSuccess ? "Test SMS sent" : "Partial delivery",
+        description: `Sent to ${successCount} of ${results.length} guardian(s)${failCount > 0 ? ` (${failCount} failed)` : ""}`,
       });
     } catch (e: any) {
       toast({
@@ -346,16 +369,15 @@ const Settings = () => {
             <MessageSquare className="w-8 h-8 text-primary" />
             <div>
               <CardTitle>Test SMS</CardTitle>
-              <CardDescription>Send a test message to verify SMS delivery</CardDescription>
+              <CardDescription>Send a test message to all your guardians</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="testPhone">Your phone number</Label>
-              <Input id="testPhone" type="tel" placeholder="+91 98765 43210" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-            </div>
-            <Button className="w-full" onClick={handleSendTestSms} disabled={!canSend}>
-              {isSendingTest ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : "Send Test SMS"}
+            <p className="text-sm text-muted-foreground">
+              This will send a test SMS to {guardians.filter((g) => g.contact_number?.trim()).length || 0} guardian(s).
+            </p>
+            <Button className="w-full" onClick={handleSendTestSms} disabled={isSendingTest || guardians.filter((g) => g.contact_number?.trim()).length === 0}>
+              {isSendingTest ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : "Send Test SMS to Guardians"}
             </Button>
             <p className="text-sm text-muted-foreground">We'll include your current location (maps link) in the test message.</p>
           </CardContent>
