@@ -108,12 +108,11 @@ const Dashboard = () => {
       return;
     }
 
-    // Get guardian info
+    // Get ALL guardians
     const { data: guardians } = await supabase
       .from("guardians")
-      .select("*")
-      .eq("user_id", user.id)
-      .limit(1);
+      .select("name, contact_number")
+      .eq("user_id", user.id);
 
     // Get medical info
     const { data: medicalInfo } = await supabase
@@ -122,26 +121,33 @@ const Dashboard = () => {
       .eq("user_id", user.id)
       .single();
 
-    // Call edge functions to send notifications
-    const notificationPromises = [];
+    // Call backend functions to send notifications
+    const notificationPromises: Promise<any>[] = [];
 
-    // SMS notification to guardian with enhanced info
-    if (guardians && guardians.length > 0) {
+    // SMS notification to ALL guardians
+    const guardianPhones = (guardians || [])
+      .map((g: any) => String(g.contact_number || "").trim())
+      .filter(Boolean);
+
+    if (guardianPhones.length > 0) {
       notificationPromises.push(
         supabase.functions.invoke("notify-emergency", {
           body: {
             emergencyId: emergency.id,
             userPhone: profile.phone,
-            guardianPhone: guardians[0].contact_number,
+            guardianPhones,
+            guardians: (guardians || []).map((g: any) => ({
+              name: g.name,
+              phone: g.contact_number,
+            })),
             userName: profile.name,
-            location: location,
+            location,
             userAge: profile.age,
             userGender: profile.gender,
             vehicleNumber: profile.vehicle_number,
             bloodGroup: medicalInfo?.blood_group,
             medicalHistory: medicalInfo?.medical_history,
             profilePhotoUrl: profile.profile_photo_url,
-            guardianName: guardians[0].name,
           },
         })
       );
