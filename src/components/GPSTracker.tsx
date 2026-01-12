@@ -31,6 +31,8 @@ interface Location {
   latitude: number;
   longitude: number;
   label?: string;
+  /** GPS horizontal accuracy in meters (if available) */
+  accuracy?: number;
 }
 
 interface GPSTrackerProps {
@@ -98,6 +100,12 @@ const GPSTracker = ({
                 <small>
                   {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
                 </small>
+                {typeof currentLocation.accuracy === 'number' && (
+                  <>
+                    <br />
+                    <small>Accuracy: ±{Math.round(currentLocation.accuracy)}m</small>
+                  </>
+                )}
               </div>
             </Popup>
           </Marker>

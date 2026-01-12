@@ -15,8 +15,8 @@ import { calculateETA, getETAStatus } from "@/utils/eta";
 interface Emergency {
   id: string;
   created_at: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   status: string;
   dispatched_to_ambulance: string | null;
   profiles: {
@@ -34,6 +34,13 @@ interface Emergency {
   }[];
 }
 
+type DriverLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp?: number;
+};
+
 interface AmbulanceInfo {
   id: string;
   name: string;
@@ -50,7 +57,7 @@ const AmbulanceDriverDashboard = () => {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<DriverLocation | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const navigate = useNavigate();
@@ -92,19 +99,38 @@ const AmbulanceDriverDashboard = () => {
 
   // Watch current location for GPS tracking
   useEffect(() => {
-    if (navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setCurrentLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        (error) => console.error("GPS error:", error),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const next: DriverLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: position.timestamp,
+        };
+
+        // Prefer more accurate fixes; still refresh periodically.
+        setCurrentLocation((prev) => {
+          if (!prev) return next;
+
+          const prevAcc = typeof prev.accuracy === "number" ? prev.accuracy : Number.POSITIVE_INFINITY;
+          const nextAcc = typeof next.accuracy === "number" ? next.accuracy : Number.POSITIVE_INFINITY;
+
+          // Update when accuracy improves or when 10s elapsed.
+          const prevTs = prev.timestamp ?? 0;
+          const nextTs = next.timestamp ?? Date.now();
+          const timeElapsed = nextTs - prevTs;
+
+          if (nextAcc <= prevAcc || timeElapsed > 10_000) return next;
+          return prev;
+        });
+      },
+      (error) => console.error("GPS error:", error),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   useEffect(() => {
@@ -251,13 +277,13 @@ const AmbulanceDriverDashboard = () => {
 
   const handleAcceptCase = async (emergency: Emergency) => {
     setProcessingId(emergency.id);
-    
+
     try {
       const { error } = await supabase
         .from("emergencies")
-        .update({ 
+        .update({
           status: "in_transit",
-          accepted_by_ambulance: ambulanceId
+          accepted_by_ambulance: ambulanceId,
         })
         .eq("id", emergency.id);
 
@@ -268,9 +294,19 @@ const AmbulanceDriverDashboard = () => {
         description: "You are now en route to the patient. GPS tracking enabled.",
       });
 
-      // Show GPS map
-      setSelectedEmergency(emergency);
-      setShowMap(true);
+      // Show GPS map only if we have patient coordinates
+      if (typeof emergency.latitude === "number" && typeof emergency.longitude === "number") {
+        setSelectedEmergency(emergency);
+        setShowMap(true);
+      } else {
+        toast({
+          title: "No patient location",
+          description: "This case has no GPS coordinates, so the live map can't be shown.",
+          variant: "destructive",
+        });
+        setSelectedEmergency(null);
+        setShowMap(false);
+      }
 
       fetchCases();
     } catch (error: any) {
@@ -348,17 +384,27 @@ const AmbulanceDriverDashboard = () => {
     }
   };
 
-  const openGoogleMaps = (lat: number, lng: number) => {
+  const openGoogleMaps = (lat: number | null, lng: number | null) => {
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      toast({
+        title: "Missing location",
+        description: "This case doesn't have GPS coordinates.",
+        variant: "destructive",
+      });
+      return;
+    }
     const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-    window.open(url, '_blank');
+    window.open(url, "_blank");
   };
 
   const getEmergencyETA = (emergency: Emergency) => {
     if (!currentLocation) return null;
-    return calculateETA(
-      currentLocation,
-      { latitude: emergency.latitude, longitude: emergency.longitude }
-    );
+    if (typeof emergency.latitude !== "number" || typeof emergency.longitude !== "number") return null;
+
+    return calculateETA(currentLocation, {
+      latitude: emergency.latitude,
+      longitude: emergency.longitude,
+    });
   };
 
   const renderCaseCard = (emergency: Emergency, isInTransit: boolean) => {
@@ -571,6 +617,14 @@ const AmbulanceDriverDashboard = () => {
                   <span className="text-emerald-400 text-sm">Notifications On</span>
                 </div>
               )}
+
+              {typeof currentLocation?.accuracy === "number" && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 border border-slate-700 rounded-lg">
+                  <Activity className="w-3 h-3 text-slate-300" />
+                  <span className="text-slate-200 text-sm">GPS ±{Math.round(currentLocation.accuracy)}m</span>
+                </div>
+              )}
+
               <Badge className="px-3 py-1.5 bg-orange-500/10 text-orange-400 border-orange-500/20">
                 <Truck className="w-3 h-3 mr-1" />
                 Driver View
@@ -638,14 +692,27 @@ const AmbulanceDriverDashboard = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <GPSTracker 
-                currentLocation={currentLocation || undefined} 
-                emergencyLocation={{ 
-                  latitude: selectedEmergency.latitude, 
-                  longitude: selectedEmergency.longitude, 
-                  label: `Patient - ${selectedEmergency.profiles.name}` 
-                }} 
-                height="400px" 
+              <GPSTracker
+                currentLocation={
+                  currentLocation
+                    ? {
+                        latitude: currentLocation.latitude,
+                        longitude: currentLocation.longitude,
+                        accuracy: currentLocation.accuracy,
+                        label: "Ambulance",
+                      }
+                    : undefined
+                }
+                emergencyLocation={
+                  typeof selectedEmergency.latitude === "number" && typeof selectedEmergency.longitude === "number"
+                    ? {
+                        latitude: selectedEmergency.latitude,
+                        longitude: selectedEmergency.longitude,
+                        label: `Patient - ${selectedEmergency.profiles.name}`,
+                      }
+                    : undefined
+                }
+                height="400px"
               />
             </CardContent>
           </Card>
