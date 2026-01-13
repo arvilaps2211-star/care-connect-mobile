@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle, X } from "lucide-react";
+import { AlertCircle, CheckCircle, X, RefreshCw } from "lucide-react";
 import { getCurrentPosition } from "@/utils/geolocation";
 
 interface EmergencyModalProps {
@@ -18,24 +18,47 @@ const EmergencyModal = ({
   onSafe,
 }: EmergencyModalProps) => {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  const resolveLocation = async () => {
+    setIsLocating(true);
+    setLocationError(null);
+    try {
+      const coords = await getCurrentPosition();
+      setLocation(coords);
+    } catch (error: any) {
+      console.error("Error getting location:", error);
+      setLocation(null);
+      setLocationError(error?.message || "Unable to get your location. Please enable location services.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
-      // Get user's location using Capacitor
-      getCurrentPosition()
-        .then((coords) => {
-          setLocation(coords);
-        })
-        .catch((error) => {
-          console.error("Error getting location:", error);
-        });
+      void resolveLocation();
+    } else {
+      setLocation(null);
+      setLocationError(null);
+      setIsLocating(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const handleEmergency = () => {
-    if (location) {
-      onEmergencyConfirmed(location);
+    // Critical: do NOT close the modal if we don't have a location,
+    // otherwise the emergency will never be created.
+    if (!location) {
+      setLocationError(
+        locationError ||
+          "Location is required to send an emergency. Please enable GPS/location permission and tap Retry."
+      );
+      return;
     }
+
+    onEmergencyConfirmed(location);
     onOpenChange(false);
   };
 
@@ -56,11 +79,40 @@ const EmergencyModal = ({
           <p className="text-center text-white/90">
             An abnormal movement was detected. If you're in an emergency, press the emergency button below.
           </p>
+
+          <div className="w-full space-y-2">
+            {isLocating ? (
+              <p className="text-center text-white/90 text-sm">Getting your location…</p>
+            ) : location ? (
+              <p className="text-center text-white/90 text-sm">
+                Location ready: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+              </p>
+            ) : (
+              <p className="text-center text-white/90 text-sm">
+                Location not available{locationError ? `: ${locationError}` : "."}
+              </p>
+            )}
+
+            {!location && (
+              <Button
+                onClick={resolveLocation}
+                variant="secondary"
+                size="lg"
+                className="w-full bg-white/15 text-white hover:bg-white/20"
+                disabled={isLocating}
+              >
+                <RefreshCw className="mr-2 h-5 w-5" />
+                Retry GPS
+              </Button>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4 w-full">
             <Button
               onClick={handleEmergency}
               size="lg"
               className="bg-white text-emergency hover:bg-white/90 font-bold h-16 shadow-emergency"
+              disabled={isLocating}
             >
               <AlertCircle className="mr-2 w-5 h-5" />
               EMERGENCY
