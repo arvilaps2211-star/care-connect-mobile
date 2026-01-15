@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle, X, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle, X, RefreshCw, HelpCircle } from "lucide-react";
 import { getCurrentPosition } from "@/utils/geolocation";
+import { LocationPermissionHelp } from "@/components/LocationPermissionHelp";
 
 interface EmergencyModalProps {
   open: boolean;
@@ -20,6 +21,7 @@ const EmergencyModal = ({
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [showLocationHelp, setShowLocationHelp] = useState(false);
 
   const resolveLocation = async () => {
     setIsLocating(true);
@@ -94,18 +96,34 @@ const EmergencyModal = ({
             )}
 
             {!location && (
-              <Button
-                onClick={resolveLocation}
-                variant="secondary"
-                size="lg"
-                className="w-full bg-white/15 text-white hover:bg-white/20"
-                disabled={isLocating}
-              >
-                <RefreshCw className="mr-2 h-5 w-5" />
-                Retry GPS
-              </Button>
+              <>
+                <Button
+                  onClick={resolveLocation}
+                  variant="secondary"
+                  size="lg"
+                  className="w-full bg-white/15 text-white hover:bg-white/20"
+                  disabled={isLocating}
+                >
+                  <RefreshCw className="mr-2 h-5 w-5" />
+                  Retry GPS
+                </Button>
+                <Button
+                  onClick={() => setShowLocationHelp(true)}
+                  variant="link"
+                  size="sm"
+                  className="w-full text-white/80 hover:text-white"
+                >
+                  <HelpCircle className="mr-1 h-4 w-4" />
+                  Need help enabling location?
+                </Button>
+              </>
             )}
           </div>
+
+          <LocationPermissionHelp
+            open={showLocationHelp}
+            onOpenChange={setShowLocationHelp}
+          />
 
           <div className="grid grid-cols-2 gap-4 w-full">
             <Button
