@@ -148,6 +148,7 @@ const Dashboard = () => {
             bloodGroup: medicalInfo?.blood_group,
             medicalHistory: medicalInfo?.medical_history,
             profilePhotoUrl: profile.profile_photo_url,
+            residentialAddress: profile.address,
           },
         })
       );
