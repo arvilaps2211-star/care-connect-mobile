@@ -633,6 +633,12 @@ const HospitalDashboard = () => {
                   {emergency.profiles.phone}
                 </a>
               </div>
+              {emergency.profiles.address && (
+                <div className="pt-2 border-t border-slate-700">
+                  <span className="text-slate-400 text-xs">Residential Address</span>
+                  <p className="text-white text-sm mt-1">{emergency.profiles.address}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -674,15 +680,9 @@ const HospitalDashboard = () => {
             </div>
             <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
               <div className="text-sm">
-                <span className="text-slate-400">Coordinates</span>
+                <span className="text-slate-400">Current Coordinates</span>
                 <p className="text-white font-mono text-xs mt-1">{emergency.latitude.toFixed(6)}, {emergency.longitude.toFixed(6)}</p>
               </div>
-              {emergency.profiles.address && (
-                <div className="text-sm">
-                  <span className="text-slate-400">Address</span>
-                  <p className="text-white text-xs mt-1">{emergency.profiles.address}</p>
-                </div>
-              )}
               <Button variant="outline" size="sm" onClick={() => openMapModal(emergency)} className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                 <Navigation className="w-4 h-4 mr-2" />
                 View on Map

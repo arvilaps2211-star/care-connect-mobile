@@ -34,6 +34,7 @@ interface EmergencyNotificationRequest {
   bloodGroup?: string;
   medicalHistory?: string;
   profilePhotoUrl?: string;
+  residentialAddress?: string;
 }
 
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
@@ -114,6 +115,7 @@ serve(async (req) => {
       userGender,
       bloodGroup,
       medicalHistory,
+      residentialAddress,
     } = payload;
 
     if (!location?.latitude || !location?.longitude) {
@@ -193,7 +195,11 @@ serve(async (req) => {
         body += `⚕️ Medical: ${medicalHistory}\n\n`;
       }
 
-      body += `📍 Location:\n${exactAddress}\n\n`;
+      if (residentialAddress) {
+        body += `🏠 Home Address:\n${residentialAddress}\n\n`;
+      }
+
+      body += `📍 Current Location:\n${exactAddress}\n\n`;
       body += `🗺️ Maps: ${mapsLink}\n\n`;
       body += `📞 Contact: ${formattedUserPhone}`;
 
