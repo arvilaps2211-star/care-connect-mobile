@@ -15,33 +15,48 @@ import HospitalDashboard from "./pages/HospitalDashboard";
 import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { useAppInitialization } from "@/hooks/useAppInitialization";
 
 const queryClient = new QueryClient();
+
+// App initialization wrapper component
+const AppContent = () => {
+  const { initialized, permissions, platform } = useAppInitialization();
+
+  // Log initialization status
+  if (initialized) {
+    console.log('[App] Initialized on', platform, 'with permissions:', permissions);
+  }
+
+  return (
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <MobileOnly>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/hospital/login" element={<HospitalLogin />} />
+            <Route path="/hospital" element={<HospitalDashboard />} />
+            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </MobileOnly>
+      </BrowserRouter>
+    </AppErrorBoundary>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AppErrorBoundary>
-        <BrowserRouter>
-          <MobileOnly>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/hospital/login" element={<HospitalLogin />} />
-              <Route path="/hospital" element={<HospitalDashboard />} />
-              <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </MobileOnly>
-        </BrowserRouter>
-      </AppErrorBoundary>
+      <AppContent />
     </TooltipProvider>
   </QueryClientProvider>
 );
