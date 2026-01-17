@@ -9,9 +9,15 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor, Users } from "lucide-react";
 import OpenStreetMapEmbed from "@/components/OpenStreetMapEmbed";
 import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
+
+interface Guardian {
+  name: string;
+  relationship: string;
+  contact_number: string;
+}
 
 interface Emergency {
   id: string;
@@ -36,6 +42,7 @@ interface Emergency {
     medical_history: string;
     additional_notes: string;
   }[];
+  guardians: Guardian[];
 }
 
 interface AmbulanceService {
@@ -670,6 +677,37 @@ const HospitalDashboard = () => {
                 </>
               ) : (
                 <p className="text-slate-500 text-sm">No medical info available</p>
+              )}
+            </div>
+
+            {/* Guardian Information - NEW */}
+            <div className="bg-slate-900/50 rounded-lg p-4 mt-4 space-y-3">
+              <div className="flex items-center gap-2 text-slate-300 font-medium mb-3">
+                <Users className="w-4 h-4" />
+                Emergency Contacts
+              </div>
+              {emergency.guardians && emergency.guardians.length > 0 ? (
+                <div className="space-y-3">
+                  {emergency.guardians.map((guardian, idx) => (
+                    <div key={idx} className="bg-slate-800/50 rounded-lg p-3 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-white font-medium">{guardian.name}</span>
+                        <Badge className="bg-blue-500/20 text-blue-400 text-xs">
+                          {guardian.relationship}
+                        </Badge>
+                      </div>
+                      <a 
+                        href={`tel:${guardian.contact_number}`} 
+                        className="text-blue-400 hover:underline flex items-center gap-1 text-sm"
+                      >
+                        <Phone className="w-3 h-3" />
+                        {guardian.contact_number}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-sm">No emergency contacts registered</p>
               )}
             </div>
           </div>

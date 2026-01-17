@@ -112,7 +112,7 @@ serve(async (req) => {
 
     // Get patient address from coordinates
     const patientAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
-    const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
+    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
     
     // Build SMS message for ambulance driver
     const driverSmsMessage = `🚨 NEW CASE DISPATCHED!\n\nPatient: ${patientName}\n📞 ${patientPhone}\n\n📍 Location:\n${patientAddress}\n\n🗺️ Navigate: ${mapsLink}\n\nOpen driver dashboard to accept.`;

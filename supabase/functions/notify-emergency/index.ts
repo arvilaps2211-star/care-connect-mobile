@@ -140,7 +140,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
-    const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
+    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
 
     const formattedUserPhone = formatPhoneNumber(userPhone);
 

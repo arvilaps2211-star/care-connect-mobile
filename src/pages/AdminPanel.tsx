@@ -2,16 +2,35 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Hospital, Ambulance, Trash2 } from "lucide-react";
+import { LogOut, Hospital, Ambulance, Trash2, Activity, Users, AlertTriangle, CheckCircle, BarChart3, Shield } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface Stats {
+  totalEmergencies: number;
+  activeEmergencies: number;
+  resolvedEmergencies: number;
+  totalHospitals: number;
+  totalAmbulances: number;
+  totalUsers: number;
+}
 
 const AdminPanel = () => {
   const [hospitals, setHospitals] = useState<any[]>([]);
   const [ambulances, setAmbulances] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalEmergencies: 0,
+    activeEmergencies: 0,
+    resolvedEmergencies: 0,
+    totalHospitals: 0,
+    totalAmbulances: 0,
+    totalUsers: 0,
+  });
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -19,6 +38,7 @@ const AdminPanel = () => {
   useEffect(() => {
     checkAuth();
     fetchData();
+    fetchStats();
   }, []);
 
   const checkAuth = async () => {
@@ -35,20 +55,63 @@ const AdminPanel = () => {
       .single();
 
     if (!roles || roles.role !== "admin") {
+      toast({
+        title: "Access Denied",
+        description: "You do not have admin privileges.",
+        variant: "destructive",
+      });
       navigate("/");
       return;
     }
   };
 
+  const fetchStats = async () => {
+    try {
+      // Fetch emergency counts
+      const [
+        { count: totalEmergencies },
+        { count: activeEmergencies },
+        { count: resolvedEmergencies },
+        { count: totalHospitals },
+        { count: totalAmbulances },
+        { count: totalUsers },
+      ] = await Promise.all([
+        supabase.from("emergencies").select("*", { count: "exact", head: true }),
+        supabase.from("emergencies").select("*", { count: "exact", head: true }).eq("status", "active"),
+        supabase.from("emergencies").select("*", { count: "exact", head: true }).in("status", ["resolved", "closed"]),
+        supabase.from("hospitals").select("*", { count: "exact", head: true }),
+        supabase.from("ambulance_services").select("*", { count: "exact", head: true }),
+        supabase.from("profiles").select("*", { count: "exact", head: true }),
+      ]);
+
+      setStats({
+        totalEmergencies: totalEmergencies || 0,
+        activeEmergencies: activeEmergencies || 0,
+        resolvedEmergencies: resolvedEmergencies || 0,
+        totalHospitals: totalHospitals || 0,
+        totalAmbulances: totalAmbulances || 0,
+        totalUsers: totalUsers || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
-    const [hospitalsRes, ambulancesRes] = await Promise.all([
-      supabase.from("hospitals").select("*"),
-      supabase.from("ambulance_services").select("*"),
-    ]);
+    
+    // Fetch hospitals with verification status (NO patient data)
+    const { data: hospitalsData } = await supabase
+      .from("hospitals")
+      .select("id, name, contact_number, latitude, longitude, created_at");
 
-    if (hospitalsRes.data) setHospitals(hospitalsRes.data);
-    if (ambulancesRes.data) setAmbulances(ambulancesRes.data);
+    // Fetch ambulances (NO patient/guardian data)
+    const { data: ambulancesData } = await supabase
+      .from("ambulance_services")
+      .select("id, name, contact_number, latitude, longitude, created_at");
+
+    if (hospitalsData) setHospitals(hospitalsData);
+    if (ambulancesData) setAmbulances(ambulancesData);
     setLoading(false);
   };
 
@@ -114,6 +177,7 @@ const AdminPanel = () => {
     });
 
     fetchData();
+    fetchStats();
     e.currentTarget.reset();
   };
 
@@ -179,6 +243,7 @@ const AdminPanel = () => {
     });
 
     fetchData();
+    fetchStats();
     e.currentTarget.reset();
   };
 
@@ -198,6 +263,7 @@ const AdminPanel = () => {
         description: `${type} deleted successfully`,
       });
       fetchData();
+      fetchStats();
     }
   };
 
@@ -207,173 +273,311 @@ const AdminPanel = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="container mx-auto p-4 md:p-8">
+        {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold text-foreground">Admin Panel</h1>
-          <Button variant="outline" onClick={handleLogout}>
+          <div className="flex items-center gap-3">
+            <div className="bg-primary/20 p-2 rounded-full">
+              <Shield className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
+              <p className="text-slate-400 text-sm">System administration dashboard</p>
+            </div>
+          </div>
+          <Button variant="outline" onClick={handleLogout} className="border-slate-600 text-slate-300 hover:bg-slate-700">
             <LogOut className="mr-2 h-4 w-4" />
             Logout
           </Button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
-          {/* Add Hospital */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Hospital className="h-5 w-5" />
-                Add Hospital
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleAddHospital} className="space-y-4">
-                <div>
-                  <Label>Email</Label>
-                  <Input name="hospital_email" type="email" required />
-                </div>
-                <div>
-                  <Label>Password</Label>
-                  <Input name="hospital_password" type="password" required />
-                </div>
-                <div>
-                  <Label>Hospital Name</Label>
-                  <Input name="hospital_name" required />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label>Latitude</Label>
-                    <Input name="hospital_lat" type="number" step="any" required />
-                  </div>
-                  <div>
-                    <Label>Longitude</Label>
-                    <Input name="hospital_lng" type="number" step="any" required />
-                  </div>
-                </div>
-                <div>
-                  <Label>Contact Number</Label>
-                  <Input name="hospital_contact" required />
-                </div>
-                <Button type="submit" className="w-full">Add Hospital</Button>
-              </form>
+        {/* Privacy Notice */}
+        <Card className="mb-6 bg-amber-900/20 border-amber-500/30">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <Shield className="w-5 h-5 text-amber-400" />
+              <p className="text-amber-200 text-sm">
+                <strong>Privacy Notice:</strong> Admin access is restricted to system management only. 
+                Patient medical details and guardian contact information are not accessible from this panel.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <BarChart3 className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.totalEmergencies}</p>
+              <p className="text-slate-400 text-xs">Total Emergencies</p>
             </CardContent>
           </Card>
-
-          {/* Add Ambulance */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Ambulance className="h-5 w-5" />
-                Add Ambulance Service
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleAddAmbulance} className="space-y-4">
-                <div>
-                  <Label>Email</Label>
-                  <Input name="ambulance_email" type="email" required />
-                </div>
-                <div>
-                  <Label>Password</Label>
-                  <Input name="ambulance_password" type="password" required />
-                </div>
-                <div>
-                  <Label>Service Name</Label>
-                  <Input name="ambulance_name" required />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label>Latitude</Label>
-                    <Input name="ambulance_lat" type="number" step="any" required />
-                  </div>
-                  <div>
-                    <Label>Longitude</Label>
-                    <Input name="ambulance_lng" type="number" step="any" required />
-                  </div>
-                </div>
-                <div>
-                  <Label>Contact Number</Label>
-                  <Input name="ambulance_contact" required />
-                </div>
-                <Button type="submit" className="w-full">Add Ambulance</Button>
-              </form>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.activeEmergencies}</p>
+              <p className="text-slate-400 text-xs">Active Now</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.resolvedEmergencies}</p>
+              <p className="text-slate-400 text-xs">Resolved</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <Hospital className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.totalHospitals}</p>
+              <p className="text-slate-400 text-xs">Hospitals</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <Ambulance className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.totalAmbulances}</p>
+              <p className="text-slate-400 text-xs">Ambulances</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-slate-800/50 border-slate-700">
+            <CardContent className="p-4 text-center">
+              <Users className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-white">{stats.totalUsers}</p>
+              <p className="text-slate-400 text-xs">Registered Users</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Hospitals List */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Hospitals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {hospitals.map((hospital) => (
-                  <TableRow key={hospital.id}>
-                    <TableCell>{hospital.name}</TableCell>
-                    <TableCell>{hospital.contact_number}</TableCell>
-                    <TableCell>{hospital.latitude}, {hospital.longitude}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDelete("hospital", hospital.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        {/* Main Content Tabs */}
+        <Tabs defaultValue="hospitals" className="space-y-6">
+          <TabsList className="bg-slate-800/50 border border-slate-700">
+            <TabsTrigger value="hospitals" className="data-[state=active]:bg-slate-700">
+              <Hospital className="w-4 h-4 mr-2" />
+              Hospitals
+            </TabsTrigger>
+            <TabsTrigger value="ambulances" className="data-[state=active]:bg-slate-700">
+              <Ambulance className="w-4 h-4 mr-2" />
+              Ambulances
+            </TabsTrigger>
+            <TabsTrigger value="add-new" className="data-[state=active]:bg-slate-700">
+              <Activity className="w-4 h-4 mr-2" />
+              Add New
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Ambulances List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Ambulance Services</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ambulances.map((ambulance) => (
-                  <TableRow key={ambulance.id}>
-                    <TableCell>{ambulance.name}</TableCell>
-                    <TableCell>{ambulance.contact_number}</TableCell>
-                    <TableCell>{ambulance.latitude}, {ambulance.longitude}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDelete("ambulance", ambulance.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+          {/* Hospitals Tab */}
+          <TabsContent value="hospitals">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Hospital className="h-5 w-5" />
+                  Registered Hospitals
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  View and manage hospital registrations
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : hospitals.length === 0 ? (
+                  <p className="text-slate-500 text-center py-8">No hospitals registered yet</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700">
+                        <TableHead className="text-slate-300">Name</TableHead>
+                        <TableHead className="text-slate-300">Contact</TableHead>
+                        <TableHead className="text-slate-300">Location</TableHead>
+                        <TableHead className="text-slate-300">Registered</TableHead>
+                        <TableHead className="text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {hospitals.map((hospital) => (
+                        <TableRow key={hospital.id} className="border-slate-700">
+                          <TableCell className="text-white font-medium">{hospital.name}</TableCell>
+                          <TableCell className="text-slate-300">{hospital.contact_number}</TableCell>
+                          <TableCell className="text-slate-400 font-mono text-xs">
+                            {hospital.latitude?.toFixed(4)}, {hospital.longitude?.toFixed(4)}
+                          </TableCell>
+                          <TableCell className="text-slate-400 text-sm">
+                            {hospital.created_at ? new Date(hospital.created_at).toLocaleDateString() : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDelete("hospital", hospital.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Ambulances Tab */}
+          <TabsContent value="ambulances">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Ambulance className="h-5 w-5" />
+                  Registered Ambulance Services
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  View and manage ambulance registrations
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : ambulances.length === 0 ? (
+                  <p className="text-slate-500 text-center py-8">No ambulances registered yet</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700">
+                        <TableHead className="text-slate-300">Service Name</TableHead>
+                        <TableHead className="text-slate-300">Contact</TableHead>
+                        <TableHead className="text-slate-300">Location</TableHead>
+                        <TableHead className="text-slate-300">Registered</TableHead>
+                        <TableHead className="text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ambulances.map((ambulance) => (
+                        <TableRow key={ambulance.id} className="border-slate-700">
+                          <TableCell className="text-white font-medium">{ambulance.name}</TableCell>
+                          <TableCell className="text-slate-300">{ambulance.contact_number}</TableCell>
+                          <TableCell className="text-slate-400 font-mono text-xs">
+                            {ambulance.latitude?.toFixed(4)}, {ambulance.longitude?.toFixed(4)}
+                          </TableCell>
+                          <TableCell className="text-slate-400 text-sm">
+                            {ambulance.created_at ? new Date(ambulance.created_at).toLocaleDateString() : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDelete("ambulance", ambulance.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Add New Tab */}
+          <TabsContent value="add-new">
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Add Hospital */}
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Hospital className="h-5 w-5 text-purple-400" />
+                    Add Hospital
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddHospital} className="space-y-4">
+                    <div>
+                      <Label className="text-slate-300">Email</Label>
+                      <Input name="hospital_email" type="email" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Password</Label>
+                      <Input name="hospital_password" type="password" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Hospital Name</Label>
+                      <Input name="hospital_name" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-slate-300">Latitude</Label>
+                        <Input name="hospital_lat" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
+                      </div>
+                      <div>
+                        <Label className="text-slate-300">Longitude</Label>
+                        <Input name="hospital_lng" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Contact Number</Label>
+                      <Input name="hospital_contact" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">Add Hospital</Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              {/* Add Ambulance */}
+              <Card className="bg-slate-800/50 border-slate-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Ambulance className="h-5 w-5 text-orange-400" />
+                    Add Ambulance Service
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddAmbulance} className="space-y-4">
+                    <div>
+                      <Label className="text-slate-300">Email</Label>
+                      <Input name="ambulance_email" type="email" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Password</Label>
+                      <Input name="ambulance_password" type="password" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Service Name</Label>
+                      <Input name="ambulance_name" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-slate-300">Latitude</Label>
+                        <Input name="ambulance_lat" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
+                      </div>
+                      <div>
+                        <Label className="text-slate-300">Longitude</Label>
+                        <Input name="ambulance_lng" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Contact Number</Label>
+                      <Input name="ambulance_contact" required className="bg-slate-700/50 border-slate-600 text-white" />
+                    </div>
+                    <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700">Add Ambulance</Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
