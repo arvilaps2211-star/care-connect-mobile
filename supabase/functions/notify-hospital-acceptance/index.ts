@@ -136,9 +136,9 @@ serve(async (req) => {
       }
     }
 
-    // Build patient location link
+    // Build patient location link using correct Google Maps format
     const patientMapsLink = patientLocation
-      ? `https://www.google.com/maps?q=${patientLocation.latitude},${patientLocation.longitude}`
+      ? `https://maps.google.com/?q=${patientLocation.latitude},${patientLocation.longitude}`
       : "";
 
     // Build SMS message with hospital details and patient address
