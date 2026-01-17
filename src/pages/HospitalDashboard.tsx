@@ -197,15 +197,17 @@ const HospitalDashboard = () => {
     const enrichEmergencies = async (emergencies: any[]) => {
       return Promise.all(
         (emergencies || []).map(async (emergency) => {
-          const [profileRes, medicalRes] = await Promise.all([
+          const [profileRes, medicalRes, guardiansRes] = await Promise.all([
             supabase.from("profiles").select("name, phone, age, gender, address, profile_photo_url").eq("user_id", emergency.user_id).single(),
             supabase.from("medical_info").select("blood_group, medical_history, additional_notes").eq("user_id", emergency.user_id),
+            supabase.from("guardians").select("name, contact_number, relationship").eq("user_id", emergency.user_id),
           ]);
 
           return {
             ...emergency,
             profiles: profileRes.data || { name: "", phone: "", age: 0, gender: "", address: "" },
             medical_info: medicalRes.data || [],
+            guardians: guardiansRes.data || [],
           };
         })
       );

@@ -16,8 +16,46 @@ import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
+import { SOSProvider, useSOSContext } from "@/contexts/SOSContext";
+import GlobalSOSOverlay from "@/components/GlobalSOSOverlay";
+import { useToast } from "@/hooks/use-toast";
 
 const queryClient = new QueryClient();
+
+// Global SOS Overlay wrapper
+const GlobalSOSWrapper = () => {
+  const { showSOS, dismissSOS, onEmergencyConfirmed } = useSOSContext();
+  const { toast } = useToast();
+
+  const handleEmergencyConfirmed = async (location: { latitude: number; longitude: number }) => {
+    if (onEmergencyConfirmed) {
+      await onEmergencyConfirmed(location);
+    } else {
+      // Fallback - shouldn't happen if dashboard is loaded
+      toast({
+        title: "Emergency Triggered",
+        description: "Please navigate to the dashboard to complete the emergency flow.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSafe = () => {
+    toast({
+      title: "Glad you're safe!",
+      description: "The alert has been dismissed.",
+    });
+  };
+
+  return (
+    <GlobalSOSOverlay
+      open={showSOS}
+      onClose={dismissSOS}
+      onEmergencyConfirmed={handleEmergencyConfirmed}
+      onSafe={handleSafe}
+    />
+  );
+};
 
 // App initialization wrapper component
 const AppContent = () => {
@@ -32,6 +70,7 @@ const AppContent = () => {
     <AppErrorBoundary>
       <BrowserRouter>
         <MobileOnly>
+          <GlobalSOSWrapper />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -54,9 +93,11 @@ const AppContent = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <AppContent />
+      <SOSProvider>
+        <Toaster />
+        <Sonner />
+        <AppContent />
+      </SOSProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,15 +6,134 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle, Heart, LogOut, Settings, Shield, Activity } from "lucide-react";
 import AccelerometerMonitor from "@/components/AccelerometerMonitor";
-import EmergencyModal from "@/components/EmergencyModal";
+import { useSOSContext } from "@/contexts/SOSContext";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [showEmergency, setShowEmergency] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { triggerSOS, setEmergencyHandler } = useSOSContext();
+
+  // Emergency handling logic
+  const handleEmergencyConfirmed = useCallback(async (location: { latitude: number; longitude: number }) => {
+    const currentUser = user;
+    const currentProfile = profile;
+    
+    if (!currentUser || !currentProfile) {
+      toast({
+        title: "Error",
+        description: "Please log in to send an emergency",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { data: emergency, error } = await supabase
+      .from("emergencies")
+      .insert({
+        user_id: currentUser.id,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        status: "active",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error recording emergency:", error);
+      toast({
+        title: "Error",
+        description: "Failed to record emergency",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Get ALL guardians
+    const { data: guardians } = await supabase
+      .from("guardians")
+      .select("name, contact_number")
+      .eq("user_id", currentUser.id);
+
+    // Get medical info
+    const { data: medicalInfo } = await supabase
+      .from("medical_info")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .single();
+
+    // Call backend functions to send notifications
+    const notificationPromises: Promise<any>[] = [];
+
+    // SMS notification to ALL guardians
+    const guardianPhones = (guardians || [])
+      .map((g: any) => String(g.contact_number || "").trim())
+      .filter(Boolean);
+
+    if (guardianPhones.length > 0) {
+      notificationPromises.push(
+        supabase.functions.invoke("notify-emergency", {
+          body: {
+            emergencyId: emergency.id,
+            userPhone: currentProfile.phone,
+            guardianPhones,
+            guardians: (guardians || []).map((g: any) => ({
+              name: g.name,
+              phone: g.contact_number,
+            })),
+            userName: currentProfile.name,
+            location,
+            userAge: currentProfile.age,
+            userGender: currentProfile.gender,
+            vehicleNumber: currentProfile.vehicle_number,
+            bloodGroup: medicalInfo?.blood_group,
+            medicalHistory: medicalInfo?.medical_history,
+            profilePhotoUrl: currentProfile.profile_photo_url,
+            residentialAddress: currentProfile.address,
+          },
+        })
+      );
+    }
+
+    // Push notification to hospitals and ambulances
+    notificationPromises.push(
+      supabase.functions.invoke("send-push-notification", {
+        body: {
+          emergencyId: emergency.id,
+          title: "🚨 EMERGENCY ALERT",
+          body: `Emergency reported by ${currentProfile.name}. Location: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+          data: {
+            type: "emergency",
+            lat: String(location.latitude),
+            lng: String(location.longitude),
+          },
+          targetRoles: ["hospital", "ambulance"],
+        },
+      })
+    );
+
+    // Execute all notifications in parallel
+    const results = await Promise.allSettled(notificationPromises);
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Notification ${index} failed:`, result.reason);
+      }
+    });
+
+    toast({
+      title: "🚨 Emergency Recorded",
+      description: "Emergency services and guardians have been notified",
+    });
+  }, [user, profile, toast]);
+
+  // Register emergency handler with global context
+  useEffect(() => {
+    if (user && profile) {
+      setEmergencyHandler(handleEmergencyConfirmed);
+    }
+  }, [user, profile, handleEmergencyConfirmed, setEmergencyHandler]);
 
   useEffect(() => {
     checkUser();
@@ -80,109 +199,9 @@ const Dashboard = () => {
     navigate("/auth");
   };
 
+  // Trigger global SOS overlay when accelerometer detects accident
   const handleAccidentDetected = () => {
-    setShowEmergency(true);
-  };
-
-  const handleEmergencyConfirmed = async (location: { latitude: number; longitude: number }) => {
-    if (!user || !profile) return;
-
-    const { data: emergency, error } = await supabase
-      .from("emergencies")
-      .insert({
-        user_id: user.id,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        status: "active",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error recording emergency:", error);
-      toast({
-        title: "Error",
-        description: "Failed to record emergency",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Get ALL guardians
-    const { data: guardians } = await supabase
-      .from("guardians")
-      .select("name, contact_number")
-      .eq("user_id", user.id);
-
-    // Get medical info
-    const { data: medicalInfo } = await supabase
-      .from("medical_info")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    // Call backend functions to send notifications
-    const notificationPromises: Promise<any>[] = [];
-
-    // SMS notification to ALL guardians
-    const guardianPhones = (guardians || [])
-      .map((g: any) => String(g.contact_number || "").trim())
-      .filter(Boolean);
-
-    if (guardianPhones.length > 0) {
-      notificationPromises.push(
-        supabase.functions.invoke("notify-emergency", {
-          body: {
-            emergencyId: emergency.id,
-            userPhone: profile.phone,
-            guardianPhones,
-            guardians: (guardians || []).map((g: any) => ({
-              name: g.name,
-              phone: g.contact_number,
-            })),
-            userName: profile.name,
-            location,
-            userAge: profile.age,
-            userGender: profile.gender,
-            vehicleNumber: profile.vehicle_number,
-            bloodGroup: medicalInfo?.blood_group,
-            medicalHistory: medicalInfo?.medical_history,
-            profilePhotoUrl: profile.profile_photo_url,
-            residentialAddress: profile.address,
-          },
-        })
-      );
-    }
-
-    // Push notification to hospitals and ambulances
-    notificationPromises.push(
-      supabase.functions.invoke("send-push-notification", {
-        body: {
-          emergencyId: emergency.id,
-          title: "🚨 EMERGENCY ALERT",
-          body: `Emergency reported by ${profile.name}. Location: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
-          data: {
-            type: "emergency",
-            lat: String(location.latitude),
-            lng: String(location.longitude),
-          },
-          targetRoles: ["hospital", "ambulance"],
-        },
-      })
-    );
-
-    // Execute all notifications in parallel
-    const results = await Promise.allSettled(notificationPromises);
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(`Notification ${index} failed:`, result.reason);
-      }
-    });
-
-    toast({
-      title: "Emergency Recorded",
-      description: "Emergency services have been notified",
-    });
+    triggerSOS();
   };
 
   if (!profile) {
@@ -268,7 +287,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <Button
-              onClick={() => setShowEmergency(true)}
+              onClick={triggerSOS}
               size="lg"
               className="w-full bg-gradient-emergency shadow-emergency"
             >
@@ -318,18 +337,10 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Accelerometer Monitor */}
+      {/* Accelerometer Monitor - triggers global SOS overlay */}
       {isMonitoring && (
         <AccelerometerMonitor onAccidentDetected={handleAccidentDetected} />
       )}
-
-      {/* Emergency Modal */}
-      <EmergencyModal
-        open={showEmergency}
-        onOpenChange={setShowEmergency}
-        onEmergencyConfirmed={handleEmergencyConfirmed}
-        onSafe={() => setShowEmergency(false)}
-      />
     </div>
   );
 };
