@@ -1,71 +1,34 @@
-import { useEffect, useRef, useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { useAccidentDetection } from "@/hooks/useAccidentDetection";
+import { useDropWarning } from "@/components/DropWarningToast";
 
 interface AccelerometerMonitorProps {
   onAccidentDetected: () => void;
+  onDropDetected?: () => void;
 }
 
-const AccelerometerMonitor = ({ onAccidentDetected }: AccelerometerMonitorProps) => {
-  const [sensitivity, setSensitivity] = useState(25); // Threshold optimized for mobile
-  const lastAcceleration = useRef({ x: 0, y: 0, z: 0 });
-  const { toast } = useToast();
+const AccelerometerMonitor = ({ 
+  onAccidentDetected, 
+  onDropDetected 
+}: AccelerometerMonitorProps) => {
+  const { showDropWarning } = useDropWarning();
 
-  useEffect(() => {
-    let animationFrame: number;
+  const { isActive, lastGForce } = useAccidentDetection({
+    enabled: true,
+    onDrop: () => {
+      // Show warning toast for phone drops
+      showDropWarning();
+      // Also call optional callback
+      onDropDetected?.();
+    },
+    onAccident: () => {
+      // Trigger full emergency flow for high impacts
+      onAccidentDetected();
+    },
+    cooldownMs: 10000, // 10 second cooldown
+  });
 
-    const handleMotion = (event: DeviceMotionEvent) => {
-      const acc = event.accelerationIncludingGravity;
-      if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
-
-      const deltaX = Math.abs(acc.x - lastAcceleration.current.x);
-      const deltaY = Math.abs(acc.y - lastAcceleration.current.y);
-      const deltaZ = Math.abs(acc.z - lastAcceleration.current.z);
-
-      const totalDelta = deltaX + deltaY + deltaZ;
-
-      // Check if movement exceeds threshold
-      if (totalDelta > sensitivity) {
-        console.log("Abnormal movement detected:", totalDelta);
-        onAccidentDetected();
-      }
-
-      lastAcceleration.current = { x: acc.x, y: acc.y, z: acc.z };
-    };
-
-    // Request permission for iOS 13+
-    if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-      (DeviceMotionEvent as any)
-        .requestPermission()
-        .then((permissionState: string) => {
-          if (permissionState === "granted") {
-            window.addEventListener("devicemotion", handleMotion);
-          } else {
-            toast({
-              title: "Permission Denied",
-              description: "Motion sensor access is required for accident detection.",
-              variant: "destructive",
-            });
-          }
-        })
-        .catch(() => {
-          toast({
-            title: "Error",
-            description: "Could not access motion sensors.",
-            variant: "destructive",
-          });
-        });
-    } else {
-      // Non-iOS or older iOS
-      window.addEventListener("devicemotion", handleMotion);
-    }
-
-    return () => {
-      window.removeEventListener("devicemotion", handleMotion);
-      if (animationFrame) cancelAnimationFrame(animationFrame);
-    };
-  }, [sensitivity, onAccidentDetected, toast]);
-
-  return null; // This is a background monitor
+  // This is a background monitor - no UI
+  return null;
 };
 
 export default AccelerometerMonitor;
