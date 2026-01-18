@@ -4,17 +4,26 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, Shield, Activity } from "lucide-react";
+import { AlertCircle, Heart, LogOut, Settings, Shield, Activity, MapPin, RefreshCw, Navigation } from "lucide-react";
 import AccelerometerMonitor from "@/components/AccelerometerMonitor";
 import { useSOSContext } from "@/contexts/SOSContext";
+import { useLocation } from "@/hooks/useLocation";
+import GPSTracker from "@/components/GPSTracker";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { triggerSOS, setEmergencyHandler } = useSOSContext();
+  
+  // Live GPS tracking using the reusable hook
+  const { location, status, error: locationError, isLoading: isLocating, refresh: refreshLocation } = useLocation({
+    watch: true,
+    highAccuracy: true,
+  });
 
   // Emergency handling logic
   const handleEmergencyConfirmed = useCallback(async (location: { latitude: number; longitude: number }) => {
@@ -239,6 +248,95 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        {/* Live GPS Status */}
+        <Card className="border-2 border-blue-500/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-blue-500" />
+                Live GPS Location
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshLocation}
+                disabled={isLocating}
+              >
+                <RefreshCw className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* GPS Status Indicator */}
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                status === "granted" && location ? "bg-green-500 animate-pulse" :
+                status === "denied" ? "bg-red-500" :
+                status === "requesting" || isLocating ? "bg-yellow-500 animate-pulse" :
+                "bg-gray-400"
+              }`} />
+              <span className="text-sm text-muted-foreground">
+                {status === "granted" && location ? "GPS Active" :
+                 status === "denied" ? "Permission Denied" :
+                 status === "requesting" ? "Requesting Permission..." :
+                 isLocating ? "Acquiring Location..." :
+                 "GPS Inactive"}
+              </span>
+            </div>
+
+            {/* Coordinates Display */}
+            {location ? (
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <span className="text-muted-foreground text-xs">Latitude</span>
+                  <p className="font-mono font-medium">{location.latitude.toFixed(6)}</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <span className="text-muted-foreground text-xs">Longitude</span>
+                  <p className="font-mono font-medium">{location.longitude.toFixed(6)}</p>
+                </div>
+                {typeof location.accuracy === "number" && (
+                  <div className="col-span-2 bg-muted/50 rounded-lg p-2">
+                    <span className="text-muted-foreground text-xs">Accuracy</span>
+                    <p className="font-medium">±{Math.round(location.accuracy)}m</p>
+                  </div>
+                )}
+              </div>
+            ) : locationError ? (
+              <p className="text-sm text-destructive">{locationError}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Waiting for GPS signal...</p>
+            )}
+
+            {/* Map Toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setShowMap(!showMap)}
+            >
+              <Navigation className="mr-2 w-4 h-4" />
+              {showMap ? "Hide Map" : "Show Map"}
+            </Button>
+
+            {/* Leaflet Map (visualization only) */}
+            {showMap && location && (
+              <div className="mt-2">
+                <GPSTracker
+                  currentLocation={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    accuracy: location.accuracy,
+                    label: "Your Location",
+                  }}
+                  height="200px"
+                  useUserIcon={true}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Monitoring Status */}
         <Card className="border-2 border-primary shadow-glow">
           <CardHeader>
