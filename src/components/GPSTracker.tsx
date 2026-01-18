@@ -19,6 +19,14 @@ const ambulanceIcon = new L.Icon({
   popupAnchor: [0, -40],
 });
 
+// User location icon
+const userLocationIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684809.png',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+});
+
 // Emergency location icon
 const emergencyIcon = new L.Icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
@@ -40,6 +48,8 @@ interface GPSTrackerProps {
   emergencyLocation?: Location;
   showRoute?: boolean;
   height?: string;
+  /** Use user icon instead of ambulance icon for currentLocation */
+  useUserIcon?: boolean;
 }
 
 // Component to recenter map when location changes
@@ -59,9 +69,13 @@ const GPSTracker = ({
   currentLocation, 
   emergencyLocation, 
   showRoute = false,
-  height = "400px" 
+  height = "400px",
+  useUserIcon = false,
 }: GPSTrackerProps) => {
   const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]); // Default to India center
+  
+  // Select appropriate icon
+  const currentIcon = useUserIcon ? userLocationIcon : ambulanceIcon;
 
   useEffect(() => {
     if (currentLocation) {
@@ -91,11 +105,11 @@ const GPSTracker = ({
         {currentLocation && (
           <Marker 
             position={[currentLocation.latitude, currentLocation.longitude]}
-            icon={ambulanceIcon}
+            icon={currentIcon}
           >
             <Popup>
               <div className="text-center">
-                <strong>🚑 {currentLocation.label || 'Ambulance Location'}</strong>
+                <strong>📍 {currentLocation.label || 'Current Location'}</strong>
                 <br />
                 <small>
                   {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
