@@ -14,6 +14,12 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
   const [isMobile, setIsMobile] = useState(true);
   const location = useLocation();
 
+  // DEVELOPMENT MODE: Bypass all restrictions when running `npm run dev`
+  const isDevelopment = import.meta.env.DEV;
+  
+  // URL escape hatch: ?forceMobile=1 allows desktop access in any environment
+  const forceMobile = new URLSearchParams(location.search).get("forceMobile") === "1";
+
   useEffect(() => {
     const checkDevice = () => {
       const userAgent = navigator.userAgent.toLowerCase();
@@ -29,15 +35,15 @@ const MobileOnly = ({ children }: { children: React.ReactNode }) => {
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
-  // Check if current route is desktop-allowed
+  // Check if current route is desktop-allowed (hospital/admin routes work on desktop in production)
   const isDesktopAllowed = DESKTOP_ALLOWED_ROUTES.some((route) => location.pathname.startsWith(route));
 
-  // Dev/preview escape hatch so you can test user flows on desktop
-  const forceMobile = new URLSearchParams(location.search).get("forceMobile") === "1";
-  const allowDesktopInDev = import.meta.env.DEV;
-
-  // Allow access if mobile OR if on desktop-allowed route OR if forced in dev
-  if (isMobile || isDesktopAllowed || forceMobile || allowDesktopInDev) {
+  // BYPASS LOGIC:
+  // 1. Development mode (`npm run dev`): ALL routes accessible on desktop
+  // 2. Production with forceMobile=1 URL param: ALL routes accessible
+  // 3. Production mobile device: ALL routes accessible
+  // 4. Production desktop: Only DESKTOP_ALLOWED_ROUTES accessible
+  if (isDevelopment || forceMobile || isMobile || isDesktopAllowed) {
     return <>{children}</>;
   }
 
