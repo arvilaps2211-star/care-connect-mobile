@@ -48,25 +48,40 @@ npx cap open android
 
 ### 6. Configure Android Permissions
 
-After opening in Android Studio, ensure the following permissions are in `android/app/src/main/AndroidManifest.xml`:
+After running `npx cap add android`, the Android project will be created. The required permissions are already configured in `android/app/src/main/AndroidManifest.xml`.
+
+**Required AndroidManifest.xml contents:**
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Internet -->
+    <!-- Internet access (required for app) -->
     <uses-permission android:name="android.permission.INTERNET" />
     
-    <!-- Location -->
+    <!-- Network state for connectivity checks -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Location Permissions - CRITICAL for GPS -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-feature android:name="android.hardware.location.gps" />
+    
+    <!-- GPS hardware feature declaration -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
     
     <!-- Push Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
-    <!-- Network State -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Vibration for alerts -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    
+    <!-- Wake lock for background tasks -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Foreground service for continuous monitoring -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -74,8 +89,10 @@ After opening in Android Studio, ensure the following permissions are in `androi
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
-        
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -87,10 +104,26 @@ After opening in Android Studio, ensure the following permissions are in `androi
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
+
 </manifest>
 ```
+
+**Important Notes:**
+- `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` are required for GPS
+- `FOREGROUND_SERVICE_LOCATION` is needed for Android 14+ background location
+- `android:usesCleartextTraffic="true"` allows dev server connections
 
 ### 7. Run on Device/Emulator
 ```bash

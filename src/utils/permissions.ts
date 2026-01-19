@@ -3,33 +3,74 @@ import { Geolocation } from '@capacitor/geolocation';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 /**
+ * Check if we're on a native platform (Android/iOS)
+ */
+export const isNativePlatform = (): boolean => {
+  return Capacitor.isNativePlatform();
+};
+
+/**
+ * Check current location permission status
+ */
+export const checkLocationPermission = async (): Promise<'granted' | 'denied' | 'prompt'> => {
+  if (!Capacitor.isNativePlatform()) {
+    // On web, return 'prompt' to indicate we need to request
+    return 'prompt';
+  }
+
+  try {
+    const status = await Geolocation.checkPermissions();
+    console.log('[Permissions] Current location status:', status);
+    
+    if (status.location === 'granted' || status.coarseLocation === 'granted') {
+      return 'granted';
+    }
+    if (status.location === 'denied') {
+      return 'denied';
+    }
+    return 'prompt';
+  } catch (error) {
+    console.error('[Permissions] Error checking location permission:', error);
+    return 'prompt';
+  }
+};
+
+/**
  * Request location permissions on native platforms
  * Returns true if permission was granted
  */
 export const requestLocationPermission = async (): Promise<boolean> => {
   if (!Capacitor.isNativePlatform()) {
-    // On web, we'll request permission when needed
+    // On web, permission is requested when getCurrentPosition is called
+    console.log('[Permissions] Web platform - location permission handled by browser');
     return true;
   }
 
   try {
-    // Check current permission status
-    const status = await Geolocation.checkPermissions();
+    // Check current permission status first
+    const currentStatus = await Geolocation.checkPermissions();
+    console.log('[Permissions] Current location permission:', currentStatus);
     
-    if (status.location === 'granted' || status.coarseLocation === 'granted') {
+    // Already granted
+    if (currentStatus.location === 'granted' || currentStatus.coarseLocation === 'granted') {
       console.log('[Permissions] Location already granted');
       return true;
     }
 
-    if (status.location === 'denied') {
-      console.log('[Permissions] Location previously denied');
+    // Previously denied - user needs to enable in settings
+    if (currentStatus.location === 'denied') {
+      console.log('[Permissions] Location previously denied - needs settings');
       return false;
     }
 
-    // Request permission
+    // Request permission - this should trigger the Android popup
+    console.log('[Permissions] Requesting location permission...');
     const result = await Geolocation.requestPermissions();
+    console.log('[Permissions] Request result:', result);
+    
     const granted = result.location === 'granted' || result.coarseLocation === 'granted';
-    console.log('[Permissions] Location permission result:', granted);
+    console.log('[Permissions] Location permission granted:', granted);
+    
     return granted;
   } catch (error) {
     console.error('[Permissions] Error requesting location permission:', error);
@@ -50,6 +91,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   try {
     // Check current permission status
     const status = await PushNotifications.checkPermissions();
+    console.log('[Permissions] Current notification status:', status);
     
     if (status.receive === 'granted') {
       console.log('[Permissions] Push notifications already granted');
@@ -62,9 +104,10 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     }
 
     // Request permission
+    console.log('[Permissions] Requesting notification permission...');
     const result = await PushNotifications.requestPermissions();
     const granted = result.receive === 'granted';
-    console.log('[Permissions] Push notification permission result:', granted);
+    console.log('[Permissions] Notification permission granted:', granted);
     
     if (granted) {
       // Register for push notifications
@@ -88,13 +131,14 @@ export const requestAllPermissions = async (): Promise<{
   notifications: boolean;
 }> => {
   console.log('[Permissions] Requesting all permissions...');
+  console.log('[Permissions] Platform:', Capacitor.getPlatform());
+  console.log('[Permissions] Is native:', Capacitor.isNativePlatform());
   
-  const [location, notifications] = await Promise.all([
-    requestLocationPermission(),
-    requestNotificationPermission(),
-  ]);
+  // Request location first, then notifications
+  const location = await requestLocationPermission();
+  const notifications = await requestNotificationPermission();
 
-  console.log('[Permissions] Results:', { location, notifications });
+  console.log('[Permissions] Final results:', { location, notifications });
   
   return { location, notifications };
 };
@@ -106,6 +150,8 @@ export const setupPushNotificationListeners = (): void => {
   if (!Capacitor.isNativePlatform()) {
     return;
   }
+
+  console.log('[Push] Setting up notification listeners...');
 
   // On registration success
   PushNotifications.addListener('registration', (token) => {
@@ -127,4 +173,67 @@ export const setupPushNotificationListeners = (): void => {
   PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     console.log('[Push] Action performed:', action);
   });
+};
+
+/**
+ * Test location by getting a single position
+ * Useful for verifying GPS is working
+ */
+export const testLocationAccess = async (): Promise<{
+  success: boolean;
+  coords?: { latitude: number; longitude: number; accuracy?: number };
+  error?: string;
+}> => {
+  if (!Capacitor.isNativePlatform()) {
+    // Web test using browser API
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve({ success: false, error: 'Geolocation not supported' });
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            success: true,
+            coords: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            },
+          });
+        },
+        (error) => {
+          resolve({ success: false, error: error.message });
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+  }
+
+  try {
+    // First ensure we have permission
+    const hasPermission = await requestLocationPermission();
+    if (!hasPermission) {
+      return { success: false, error: 'Location permission not granted' };
+    }
+
+    // Try to get position
+    const position = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 10000,
+    });
+
+    return {
+      success: true,
+      coords: {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      },
+    };
+  } catch (error: any) {
+    console.error('[Permissions] Test location error:', error);
+    return { success: false, error: error?.message || 'Failed to get location' };
+  }
 };
