@@ -13,7 +13,19 @@ const config: CapacitorConfig = {
       launchShowDuration: 2000,
       backgroundColor: '#3b82f6',
       showSpinner: false
+    },
+    // Geolocation plugin configuration
+    Geolocation: {
+      // Request high accuracy by default
+      enableHighAccuracy: true
     }
+  },
+  // Android-specific configuration
+  android: {
+    // Allow mixed content for dev server
+    allowMixedContent: true,
+    // Capture all navigation
+    webContentsDebuggingEnabled: true
   }
 };
 

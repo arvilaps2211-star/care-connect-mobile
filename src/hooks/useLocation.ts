@@ -20,6 +20,8 @@ export interface UseLocationOptions {
   timeout?: number;
   /** Maximum age of cached position in ms */
   maximumAge?: number;
+  /** Update interval in ms when watching (only for periodic refresh) */
+  updateInterval?: number;
 }
 
 export interface UseLocationResult {
@@ -40,13 +42,21 @@ export interface UseLocationResult {
 const DEFAULT_OPTIONS: Required<UseLocationOptions> = {
   watch: false,
   highAccuracy: true,
-  timeout: 15000,
+  timeout: 10000,
   maximumAge: 0,
+  updateInterval: 10000,
+};
+
+/**
+ * Check if platform is native (Android/iOS)
+ */
+const isNative = (): boolean => {
+  return Capacitor.isNativePlatform();
 };
 
 /**
  * Reusable hook for GPS location with Capacitor support
- * Works on both native (Android/iOS) and web platforms
+ * Uses Capacitor Geolocation on native, browser API on web
  */
 export const useLocation = (options: UseLocationOptions = {}): UseLocationResult => {
   const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -58,36 +68,56 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
   
   const watchIdRef = useRef<string | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Request permissions (native only)
+  /**
+   * Request location permissions (Capacitor on native)
+   */
   const requestPermission = useCallback(async (): Promise<boolean> => {
-    if (!Capacitor.isNativePlatform()) {
-      // On web, permission is requested when getting position
+    // Web platform - permission handled by browser when getting position
+    if (!isNative()) {
+      console.log('[useLocation] Web platform - permissions handled by browser');
       return true;
     }
 
     try {
       setStatus("requesting");
-      const currentPermission = await Geolocation.checkPermissions();
+      console.log('[useLocation] Checking native permissions...');
       
-      if (currentPermission.location === "granted") {
+      // Check current permission status
+      const currentPermission = await Geolocation.checkPermissions();
+      console.log('[useLocation] Current permission status:', currentPermission);
+      
+      // Already granted
+      if (currentPermission.location === "granted" || currentPermission.coarseLocation === "granted") {
+        console.log('[useLocation] Permission already granted');
         setStatus("granted");
         return true;
       }
 
+      // Previously denied - need to go to settings
       if (currentPermission.location === "denied") {
+        console.log('[useLocation] Permission was denied - user needs to enable in settings');
         setStatus("denied");
-        setError("Location permission was previously denied. Please enable it in settings.");
+        setError("Location permission denied. Please enable in Settings > Apps > CareConnect > Permissions.");
         return false;
       }
 
-      // Request permission
+      // Request permission - this triggers the Android permission dialog
+      console.log('[useLocation] Requesting permission from system...');
       const result = await Geolocation.requestPermissions();
+      console.log('[useLocation] Permission request result:', result);
+      
       const granted = result.location === "granted" || result.coarseLocation === "granted";
       
-      setStatus(granted ? "granted" : "denied");
-      if (!granted) {
-        setError("Location permission denied. Please enable location access in your device settings.");
+      if (granted) {
+        setStatus("granted");
+        setError(null);
+        console.log('[useLocation] Permission granted!');
+      } else {
+        setStatus("denied");
+        setError("Location permission was not granted. Please enable it in your device settings.");
+        console.log('[useLocation] Permission not granted');
       }
       
       return granted;
@@ -285,6 +315,12 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
 
   // Stop watching
   const stopWatching = useCallback(async () => {
+    // Clear interval if using periodic refresh
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
     if (webWatchIdRef.current !== null) {
       navigator.geolocation.clearWatch(webWatchIdRef.current);
       webWatchIdRef.current = null;
@@ -307,13 +343,24 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
 
   // Initialize on mount
   useEffect(() => {
+    console.log('[useLocation] Initializing, watch:', opts.watch, 'platform:', Capacitor.getPlatform());
+    
     if (opts.watch) {
       startWatching();
+      
+      // Also set up periodic refresh every updateInterval ms
+      if (opts.updateInterval > 0) {
+        intervalRef.current = setInterval(() => {
+          console.log('[useLocation] Periodic refresh...');
+          getCurrentPosition();
+        }, opts.updateInterval);
+      }
     } else {
       getCurrentPosition();
     }
 
     return () => {
+      console.log('[useLocation] Cleaning up...');
       stopWatching();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
