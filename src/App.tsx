@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MobileOnly from "./components/MobileOnly";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
@@ -19,19 +20,38 @@ import { useAppInitialization } from "@/hooks/useAppInitialization";
 import { SOSProvider, useSOSContext } from "@/contexts/SOSContext";
 import GlobalSOSOverlay from "@/components/GlobalSOSOverlay";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
+import { createEmergencyChannel, initializeBackgroundNotifications } from "@/utils/backgroundNotification";
 
 const queryClient = new QueryClient();
 
 // Global SOS Overlay wrapper
 const GlobalSOSWrapper = () => {
-  const { showSOS, dismissSOS, onEmergencyConfirmed } = useSOSContext();
+  const { showSOS, dismissSOS, onEmergencyConfirmed, triggerSOS } = useSOSContext();
   const { toast } = useToast();
+
+  // Initialize background notification handlers
+  useEffect(() => {
+    createEmergencyChannel();
+    initializeBackgroundNotifications({
+      onSafe: () => {
+        dismissSOS();
+        toast({
+          title: "Glad you're safe!",
+          description: "The alert has been dismissed.",
+        });
+      },
+      onSOS: () => {
+        // Trigger SOS flow when user taps SOS from notification
+        triggerSOS();
+      },
+    });
+  }, [dismissSOS, triggerSOS, toast]);
 
   const handleEmergencyConfirmed = async (location: { latitude: number; longitude: number }) => {
     if (onEmergencyConfirmed) {
       await onEmergencyConfirmed(location);
     } else {
-      // Fallback - shouldn't happen if dashboard is loaded
       toast({
         title: "Emergency Triggered",
         description: "Please navigate to the dashboard to complete the emergency flow.",
@@ -61,7 +81,6 @@ const GlobalSOSWrapper = () => {
 const AppContent = () => {
   const { initialized, permissions, platform } = useAppInitialization();
 
-  // Log initialization status
   if (initialized) {
     console.log('[App] Initialized on', platform, 'with permissions:', permissions);
   }
@@ -72,16 +91,50 @@ const AppContent = () => {
         <MobileOnly>
           <GlobalSOSWrapper />
           <Routes>
+            {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/settings" element={<Settings />} />
             <Route path="/hospital/login" element={<HospitalLogin />} />
-            <Route path="/hospital" element={<HospitalDashboard />} />
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            
+            {/* User routes - require 'user' role */}
+            <Route path="/onboarding" element={
+              <ProtectedRoute requiredRole="user">
+                <Onboarding />
+              </ProtectedRoute>
+            } />
+            <Route path="/dashboard" element={
+              <ProtectedRoute requiredRole="user">
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute requiredRole="user">
+                <Settings />
+              </ProtectedRoute>
+            } />
+            
+            {/* Hospital routes - require 'hospital' role */}
+            <Route path="/hospital" element={
+              <ProtectedRoute requiredRole="hospital" redirectTo="/hospital/login">
+                <HospitalDashboard />
+              </ProtectedRoute>
+            } />
+            
+            {/* Admin routes - require 'admin' role */}
+            <Route path="/admin" element={
+              <ProtectedRoute requiredRole="admin" redirectTo="/auth">
+                <AdminPanel />
+              </ProtectedRoute>
+            } />
+            
+            {/* Ambulance routes - require 'ambulance' role */}
+            <Route path="/ambulance/driver" element={
+              <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+                <AmbulanceDriverDashboard />
+              </ProtectedRoute>
+            } />
+            
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </MobileOnly>
