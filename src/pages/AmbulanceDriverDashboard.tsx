@@ -7,10 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   LogOut, AlertCircle, MapPin, Phone, User, Heart, Navigation, 
-  Activity, CheckCircle, X, Truck, ArrowLeft, Clock, Bell, BellOff, Timer
+  Activity, CheckCircle, X, Truck, ArrowLeft, Clock, Bell, BellOff, Timer, Users
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
 import { calculateETA, getETAStatus } from "@/utils/eta";
+
+interface Guardian {
+  id: string;
+  name: string;
+  relationship: string;
+  contact_number: string;
+}
 
 interface Emergency {
   id: string;
@@ -32,6 +39,7 @@ interface Emergency {
     medical_history: string;
     additional_notes: string;
   }[];
+  guardians: Guardian[];
 }
 
 type DriverLocation = {
@@ -202,15 +210,17 @@ const AmbulanceDriverDashboard = () => {
     const enrichEmergencies = async (emergencies: any[]) => {
       return Promise.all(
         (emergencies || []).map(async (emergency) => {
-          const [profileRes, medicalRes] = await Promise.all([
+          const [profileRes, medicalRes, guardiansRes] = await Promise.all([
             supabase.from("profiles").select("name, phone, age, gender, address, profile_photo_url").eq("user_id", emergency.user_id).single(),
             supabase.from("medical_info").select("blood_group, medical_history, additional_notes").eq("user_id", emergency.user_id),
+            supabase.from("guardians").select("id, name, relationship, contact_number").eq("user_id", emergency.user_id),
           ]);
 
           return {
             ...emergency,
             profiles: profileRes.data || { name: "", phone: "", age: 0, gender: "", address: "" },
             medical_info: medicalRes.data || [],
+            guardians: guardiansRes.data || [],
           };
         })
       );
@@ -508,7 +518,31 @@ const AmbulanceDriverDashboard = () => {
             </div>
           </div>
 
-          {/* Location & Actions */}
+          {/* Guardian Info */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-slate-300 font-medium">
+              <Users className="w-4 h-4" />
+              Emergency Contacts
+            </div>
+            <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+              {emergency.guardians && emergency.guardians.length > 0 ? (
+                emergency.guardians.map((guardian) => (
+                  <div key={guardian.id} className="border-b border-slate-700 pb-2 last:border-0 last:pb-0">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 text-sm">{guardian.relationship}</span>
+                      <span className="text-white text-sm font-medium">{guardian.name}</span>
+                    </div>
+                    <a href={`tel:${guardian.contact_number}`} className="flex items-center gap-1 text-emerald-400 text-xs mt-1 hover:underline">
+                      <Phone className="w-3 h-3" />
+                      {guardian.contact_number}
+                    </a>
+                  </div>
+                ))
+              ) : (
+                <p className="text-slate-500 text-sm">No emergency contacts</p>
+              )}
+            </div>
+          </div>
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-slate-300 font-medium">
               <MapPin className="w-4 h-4" />
