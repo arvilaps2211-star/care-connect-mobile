@@ -17,30 +17,58 @@ interface DispatchNotificationRequest {
   };
 }
 
-// Ensure phone has country code (defaults to +91 India if missing)
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\(\)]/g, "");
-  if (!cleaned.startsWith("+")) {
-    if (cleaned.startsWith("0")) {
-      cleaned = cleaned.substring(1);
-    }
-    cleaned = "+91" + cleaned;
+/**
+ * Format phone number to E.164 format (+91XXXXXXXXXX for India)
+ */
+function formatPhoneNumber(phone: string): { formatted: string; isValid: boolean } {
+  if (!phone || typeof phone !== "string") {
+    return { formatted: "", isValid: false };
   }
-  return cleaned;
+
+  let cleaned = phone.replace(/[^\d+]/g, "").trim();
+
+  if (!cleaned) {
+    return { formatted: "", isValid: false };
+  }
+
+  if (cleaned.startsWith("+")) {
+    const isValid = /^\+[1-9]\d{6,14}$/.test(cleaned);
+    return { formatted: cleaned, isValid };
+  }
+
+  if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  if (cleaned.length === 10 && /^\d{10}$/.test(cleaned)) {
+    return { formatted: `+91${cleaned}`, isValid: true };
+  }
+
+  if ((cleaned.length === 12 || cleaned.length === 11) && cleaned.startsWith("91")) {
+    const withPlus = `+${cleaned}`;
+    const isValid = /^\+91\d{10}$/.test(withPlus);
+    return { formatted: withPlus, isValid };
+  }
+
+  const withPlus = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  const isValid = /^\+[1-9]\d{6,14}$/.test(withPlus);
+  return { formatted: withPlus, isValid };
 }
 
-// Reverse geocode to get address from coordinates
+/**
+ * Reverse geocode to get address from coordinates
+ */
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
       {
         headers: {
-          'User-Agent': 'CareConnect Emergency App'
-        }
+          "User-Agent": "CareConnect Emergency App",
+        },
       }
     );
-    
+
     if (response.ok) {
       const data = await response.json();
       return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
@@ -61,11 +89,13 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { emergencyId, ambulanceId, patientName, patientPhone, location } = 
-      await req.json() as DispatchNotificationRequest;
+    const { emergencyId, ambulanceId, patientName, patientPhone, location } =
+      (await req.json()) as DispatchNotificationRequest;
 
-    console.log(`Processing dispatch notification for ambulance: ${ambulanceId}`);
-    console.log(`Emergency ID: ${emergencyId}, Patient: ${patientName}`);
+    console.log("=== AMBULANCE DISPATCH NOTIFICATION ===");
+    console.log("Emergency ID:", emergencyId);
+    console.log("Ambulance ID:", ambulanceId);
+    console.log("Patient:", patientName);
 
     // Get emergency details for user_id
     const { data: emergency, error: emergencyError } = await supabase
@@ -91,7 +121,7 @@ serve(async (req) => {
       throw new Error("Ambulance not found");
     }
 
-    console.log(`Ambulance: ${ambulance.name}, Contact: ${ambulance.contact_number}`);
+    console.log("Ambulance:", ambulance.name);
 
     // Get hospital details if available
     let hospitalName = "Hospital";
@@ -104,16 +134,20 @@ serve(async (req) => {
       if (hospital) hospitalName = hospital.name;
     }
 
-    // Get guardians for this user
+    // Get ALL guardians for this user
     const { data: guardians } = await supabase
       .from("guardians")
       .select("name, contact_number")
       .eq("user_id", emergency.user_id);
 
+    console.log("Guardians to notify:", guardians?.length || 0);
+
     // Get patient address from coordinates
     const patientAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
-    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
     
+    // Standard Google Maps link format
+    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+
     // Build SMS message for ambulance driver
     const driverSmsMessage = `🚨 NEW CASE DISPATCHED!\n\nPatient: ${patientName}\n📞 ${patientPhone}\n\n📍 Location:\n${patientAddress}\n\n🗺️ Navigate: ${mapsLink}\n\nOpen driver dashboard to accept.`;
 
@@ -128,12 +162,31 @@ serve(async (req) => {
     const results: any[] = [];
     let driverSmsStatus = "not_configured";
 
-    if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
-      const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+      console.log("Twilio credentials not configured");
+      console.log("Driver SMS would be:", driverSmsMessage);
+      console.log("Guardian SMS would be:", guardianSmsMessage);
 
-      // Send SMS to ambulance driver
-      if (ambulance.contact_number) {
-        const formattedDriverPhone = formatPhoneNumber(ambulance.contact_number);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          driverSmsStatus: "not_configured",
+          ambulanceName: ambulance.name,
+          mapsLink,
+          results: [],
+          message: "SMS not configured",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+
+    // Send SMS to ambulance driver
+    if (ambulance.contact_number) {
+      const { formatted: formattedDriverPhone, isValid } = formatPhoneNumber(ambulance.contact_number);
+
+      if (isValid && formattedDriverPhone) {
         console.log(`Sending SMS to ambulance driver: ${formattedDriverPhone}`);
 
         try {
@@ -142,7 +195,7 @@ serve(async (req) => {
             {
               method: "POST",
               headers: {
-                "Authorization": `Basic ${auth}`,
+                Authorization: `Basic ${auth}`,
                 "Content-Type": "application/x-www-form-urlencoded",
               },
               body: new URLSearchParams({
@@ -155,7 +208,11 @@ serve(async (req) => {
 
           const responseText = await response.text();
           let twilioRes: any = {};
-          try { twilioRes = JSON.parse(responseText); } catch { twilioRes = { raw: responseText }; }
+          try {
+            twilioRes = JSON.parse(responseText);
+          } catch {
+            twilioRes = { raw: responseText };
+          }
 
           console.log("Driver SMS response:", {
             ok: response.ok,
@@ -182,68 +239,96 @@ serve(async (req) => {
             error: error?.message,
           });
         }
-      }
-
-      // Send SMS to ALL guardians
-      if (guardians && guardians.length > 0) {
-        for (const guardian of guardians) {
-          const formattedPhone = formatPhoneNumber(guardian.contact_number);
-          
-          try {
-            const response = await fetch(
-              `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-              {
-                method: "POST",
-                headers: {
-                  "Authorization": `Basic ${auth}`,
-                  "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams({
-                  To: formattedPhone,
-                  From: twilioPhoneNumber,
-                  Body: guardianSmsMessage,
-                }),
-              }
-            );
-
-            const responseText = await response.text();
-            let twilioRes: any = {};
-            try { twilioRes = JSON.parse(responseText); } catch { twilioRes = { raw: responseText }; }
-
-            console.log("Guardian SMS response:", {
-              ok: response.ok,
-              guardianName: guardian.name,
-              to: formattedPhone,
-              sid: twilioRes?.sid,
-            });
-
-            results.push({
-              recipient: `guardian_${guardian.name}`,
-              to: formattedPhone,
-              success: response.ok,
-              sid: twilioRes?.sid,
-              twilioStatus: twilioRes?.status,
-            });
-          } catch (error: any) {
-            console.error("Error sending SMS to guardian:", guardian.name, error);
-            results.push({
-              recipient: `guardian_${guardian.name}`,
-              to: formattedPhone,
-              success: false,
-              error: error?.message,
-            });
-          }
-        }
       } else {
-        console.log("No guardians found for this user");
+        console.warn("Invalid driver phone number:", ambulance.contact_number);
+        results.push({
+          recipient: "ambulance_driver",
+          to: ambulance.contact_number,
+          success: false,
+          skipped: true,
+          error: "Invalid phone number format",
+        });
+      }
+    }
+
+    // Send SMS to ALL guardians
+    if (guardians && guardians.length > 0) {
+      for (const guardian of guardians) {
+        const { formatted: formattedPhone, isValid } = formatPhoneNumber(guardian.contact_number);
+
+        // Skip invalid phone numbers
+        if (!isValid || !formattedPhone) {
+          console.warn(`Skipping invalid phone for guardian ${guardian.name}:`, guardian.contact_number);
+          results.push({
+            recipient: `guardian_${guardian.name}`,
+            to: guardian.contact_number,
+            success: false,
+            skipped: true,
+            error: "Invalid phone number format",
+          });
+          continue;
+        }
+
+        try {
+          console.log(`Sending dispatch SMS to guardian ${guardian.name}: ${formattedPhone}`);
+
+          const response = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Basic ${auth}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                To: formattedPhone,
+                From: twilioPhoneNumber,
+                Body: guardianSmsMessage,
+              }),
+            }
+          );
+
+          const responseText = await response.text();
+          let twilioRes: any = {};
+          try {
+            twilioRes = JSON.parse(responseText);
+          } catch {
+            twilioRes = { raw: responseText };
+          }
+
+          console.log("Guardian SMS response:", {
+            ok: response.ok,
+            guardianName: guardian.name,
+            to: formattedPhone,
+            sid: twilioRes?.sid,
+          });
+
+          results.push({
+            recipient: `guardian_${guardian.name}`,
+            to: formattedPhone,
+            success: response.ok,
+            sid: twilioRes?.sid,
+            twilioStatus: twilioRes?.status,
+          });
+        } catch (error: any) {
+          console.error(`Error sending SMS to guardian ${guardian.name}:`, error);
+          results.push({
+            recipient: `guardian_${guardian.name}`,
+            to: formattedPhone,
+            success: false,
+            error: error?.message,
+          });
+        }
       }
     } else {
-      console.log("Twilio credentials not configured.");
-      console.log("Driver SMS would be:", driverSmsMessage);
-      console.log("Guardian SMS would be:", guardianSmsMessage);
+      console.log("No guardians found for this user");
     }
 
     const anySuccess = results.some((r) => r.success);
+    const sentCount = results.filter((r) => r.success).length;
+
+    console.log("=== DISPATCH SMS SUMMARY ===");
+    console.log(`Sent: ${sentCount}/${results.length}`);
 
     return new Response(
       JSON.stringify({
@@ -252,15 +337,13 @@ serve(async (req) => {
         ambulanceName: ambulance.name,
         mapsLink,
         results,
-        message: anySuccess 
-          ? `Notifications sent: ${results.filter(r => r.success).length} of ${results.length}`
-          : results.length === 0 
+        message: anySuccess
+          ? `Notifications sent: ${sentCount} of ${results.length}`
+          : results.length === 0
           ? "SMS not configured"
           : "SMS notifications failed",
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Error in notify-ambulance-dispatch:", error);

@@ -37,6 +37,9 @@ interface EmergencyNotificationRequest {
   residentialAddress?: string;
 }
 
+/**
+ * Reverse geocode coordinates to human-readable address using Nominatim
+ */
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
   try {
     const response = await fetch(
@@ -59,22 +62,56 @@ async function getAddressFromCoordinates(lat: number, lng: number): Promise<stri
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\(\)]/g, "").trim();
+/**
+ * Format phone number to E.164 format (+91XXXXXXXXXX for India)
+ * Validates that the result is a proper E.164 number
+ */
+function formatPhoneNumber(phone: string): { formatted: string; isValid: boolean } {
+  if (!phone || typeof phone !== "string") {
+    return { formatted: "", isValid: false };
+  }
 
-  if (cleaned.startsWith("+")) return cleaned;
+  // Remove all non-digit characters except leading +
+  let cleaned = phone.replace(/[^\d+]/g, "").trim();
 
+  // If empty after cleaning, invalid
+  if (!cleaned) {
+    return { formatted: "", isValid: false };
+  }
+
+  // If already has country code
+  if (cleaned.startsWith("+")) {
+    // Validate E.164 format (+ followed by 7-15 digits)
+    const isValid = /^\+[1-9]\d{6,14}$/.test(cleaned);
+    return { formatted: cleaned, isValid };
+  }
+
+  // Remove leading 0 if present (common in India)
   if (cleaned.startsWith("0")) {
     cleaned = cleaned.substring(1);
   }
 
-  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
-    return `+91${cleaned}`;
+  // If 10 digits, assume India (+91)
+  if (cleaned.length === 10 && /^\d{10}$/.test(cleaned)) {
+    return { formatted: `+91${cleaned}`, isValid: true };
   }
 
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  // If 11-12 digits starting with 91, add +
+  if ((cleaned.length === 12 || cleaned.length === 11) && cleaned.startsWith("91")) {
+    const withPlus = `+${cleaned}`;
+    const isValid = /^\+91\d{10}$/.test(withPlus);
+    return { formatted: withPlus, isValid };
+  }
+
+  // For other formats, try adding + and validate
+  const withPlus = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  const isValid = /^\+[1-9]\d{6,14}$/.test(withPlus);
+  return { formatted: withPlus, isValid };
 }
 
+/**
+ * Normalize guardian list from various input formats
+ */
 function normalizeGuardians(payload: EmergencyNotificationRequest): GuardianInput[] {
   // Preferred: explicit guardians array
   if (Array.isArray(payload.guardians) && payload.guardians.length > 0) {
@@ -118,7 +155,13 @@ serve(async (req) => {
       residentialAddress,
     } = payload;
 
+    console.log("=== EMERGENCY SMS NOTIFICATION ===");
+    console.log("Emergency ID:", emergencyId);
+    console.log("User:", userName);
+
+    // Validate location
     if (!location?.latitude || !location?.longitude) {
+      console.error("Invalid location provided");
       return new Response(JSON.stringify({ success: false, error: "Invalid location" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -126,42 +169,69 @@ serve(async (req) => {
     }
 
     const guardians = normalizeGuardians(payload);
-
-    console.log("Processing emergency notification:", {
-      emergencyId,
-      userName,
-      guardiansCount: guardians.length,
-      location,
-    });
+    console.log("Guardians to notify:", guardians.length);
 
     // Initialize backend client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get address from coordinates
     const exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
+    console.log("Resolved address:", exactAddress);
+
+    // Standard Google Maps link format (confirmed working on all devices)
     const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
 
-    const formattedUserPhone = formatPhoneNumber(userPhone);
+    // Format user phone for contact info in SMS
+    const { formatted: formattedUserPhone } = formatPhoneNumber(userPhone);
 
-    // Twilio credentials
+    // Twilio credentials from Supabase secrets
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const twilioAuthToken = Deno.env.get("TWILIO_AUTH_TOKEN");
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
+    // Check Twilio configuration
     if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+      console.error("Twilio credentials not configured");
+      console.log("Missing: ", {
+        accountSid: !!twilioAccountSid,
+        authToken: !!twilioAuthToken,
+        phoneNumber: !!twilioPhoneNumber,
+      });
+
+      // Update emergency record even if SMS not configured
+      await supabase
+        .from("emergencies")
+        .update({
+          notified_at: new Date().toISOString(),
+          guardian_notified: false,
+        })
+        .eq("id", emergencyId);
+
       return new Response(
         JSON.stringify({
           success: true,
           guardianSmsStatus: "not_configured",
           mapsLink,
-          error: "SMS not configured",
+          error: "SMS not configured - Twilio credentials missing",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Check if there are guardians to notify
     if (guardians.length === 0) {
+      console.log("No guardians found for user");
+      
+      await supabase
+        .from("emergencies")
+        .update({
+          notified_at: new Date().toISOString(),
+          guardian_notified: false,
+        })
+        .eq("id", emergencyId);
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -174,15 +244,30 @@ serve(async (req) => {
     }
 
     const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
-
     const results: any[] = [];
 
+    // Send SMS to EACH guardian
     for (const g of guardians) {
-      const to = formatPhoneNumber(g.phone);
+      const { formatted: to, isValid } = formatPhoneNumber(g.phone);
 
+      // Skip invalid phone numbers (don't crash, just log and continue)
+      if (!isValid || !to) {
+        console.warn(`Skipping invalid phone number for guardian ${g.name}:`, g.phone);
+        results.push({
+          to: g.phone,
+          guardianName: g.name,
+          success: false,
+          skipped: true,
+          errorMessage: "Invalid phone number format",
+        });
+        continue;
+      }
+
+      // Build personalized SMS message
       let body = `🚨 EMERGENCY ALERT!\n\n`;
       body += `${g.name ? `Dear ${g.name}, ` : ""}${userName} needs help!\n\n`;
 
+      // Add patient info if available
       if (userAge || userGender || bloodGroup) {
         body += `👤 Patient Info:\n`;
         if (userAge) body += `Age: ${userAge}\n`;
@@ -201,9 +286,11 @@ serve(async (req) => {
 
       body += `📍 Current Location:\n${exactAddress}\n\n`;
       body += `🗺️ Maps: ${mapsLink}\n\n`;
-      body += `📞 Contact: ${formattedUserPhone}`;
+      body += `📞 Contact: ${formattedUserPhone || userPhone}`;
 
       try {
+        console.log(`Sending SMS to guardian ${g.name || "Unknown"}: ${to}`);
+
         const response = await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
           {
@@ -228,14 +315,14 @@ serve(async (req) => {
           twilio = { raw: responseText };
         }
 
-        console.log("Guardian SMS provider response:", {
+        console.log("Twilio response:", {
           ok: response.ok,
           status: response.status,
           to,
+          guardianName: g.name,
           sid: twilio?.sid,
           twilioStatus: twilio?.status,
           errorCode: twilio?.code ?? twilio?.error_code,
-          errorMessage: twilio?.message ?? twilio?.error_message,
         });
 
         results.push({
@@ -246,11 +333,11 @@ serve(async (req) => {
           sid: twilio?.sid,
           twilioStatus: twilio?.status,
           errorCode: twilio?.code ?? twilio?.error_code,
-          errorMessage: twilio?.message ?? twilio?.error_message,
-          raw: response.ok ? undefined : twilio,
+          errorMessage: response.ok ? undefined : (twilio?.message ?? twilio?.error_message),
         });
       } catch (e: any) {
-        console.error("Error sending SMS:", e);
+        // Don't let one failure stop other guardians from being notified
+        console.error(`Error sending SMS to ${g.name}:`, e);
         results.push({
           to,
           guardianName: g.name,
@@ -261,8 +348,15 @@ serve(async (req) => {
     }
 
     const anySuccess = results.some((r) => r.success);
+    const allSuccess = results.every((r) => r.success || r.skipped);
+    const sentCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success && !r.skipped).length;
+    const skippedCount = results.filter((r) => r.skipped).length;
 
-    // Mark emergency as notified if Twilio accepted at least one message.
+    console.log("=== SMS SUMMARY ===");
+    console.log(`Sent: ${sentCount}, Failed: ${failedCount}, Skipped: ${skippedCount}`);
+
+    // Update emergency record with notification status
     await supabase
       .from("emergencies")
       .update({
@@ -274,9 +368,15 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: anySuccess,
-        guardianSmsStatus: anySuccess ? "accepted" : "failed",
+        guardianSmsStatus: anySuccess ? (allSuccess ? "all_sent" : "partial") : "failed",
         results,
         mapsLink,
+        summary: {
+          total: results.length,
+          sent: sentCount,
+          failed: failedCount,
+          skipped: skippedCount,
+        },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -19,30 +19,58 @@ interface HospitalAcceptanceRequest {
   };
 }
 
-// Ensure phone has country code (defaults to +91 India if missing)
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\(\)]/g, "");
-  if (!cleaned.startsWith("+")) {
-    if (cleaned.startsWith("0")) {
-      cleaned = cleaned.substring(1);
-    }
-    cleaned = "+91" + cleaned;
+/**
+ * Format phone number to E.164 format (+91XXXXXXXXXX for India)
+ */
+function formatPhoneNumber(phone: string): { formatted: string; isValid: boolean } {
+  if (!phone || typeof phone !== "string") {
+    return { formatted: "", isValid: false };
   }
-  return cleaned;
+
+  let cleaned = phone.replace(/[^\d+]/g, "").trim();
+
+  if (!cleaned) {
+    return { formatted: "", isValid: false };
+  }
+
+  if (cleaned.startsWith("+")) {
+    const isValid = /^\+[1-9]\d{6,14}$/.test(cleaned);
+    return { formatted: cleaned, isValid };
+  }
+
+  if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  if (cleaned.length === 10 && /^\d{10}$/.test(cleaned)) {
+    return { formatted: `+91${cleaned}`, isValid: true };
+  }
+
+  if ((cleaned.length === 12 || cleaned.length === 11) && cleaned.startsWith("91")) {
+    const withPlus = `+${cleaned}`;
+    const isValid = /^\+91\d{10}$/.test(withPlus);
+    return { formatted: withPlus, isValid };
+  }
+
+  const withPlus = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  const isValid = /^\+[1-9]\d{6,14}$/.test(withPlus);
+  return { formatted: withPlus, isValid };
 }
 
-// Reverse geocode to get address from coordinates
+/**
+ * Reverse geocode to get address from coordinates
+ */
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
       {
         headers: {
-          'User-Agent': 'CareConnect Emergency App'
-        }
+          "User-Agent": "CareConnect Emergency App",
+        },
       }
     );
-    
+
     if (response.ok) {
       const data = await response.json();
       return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
@@ -68,11 +96,9 @@ serve(async (req) => {
       patientLocation,
     }: HospitalAcceptanceRequest = await req.json();
 
-    console.log("Processing hospital acceptance notification:", {
-      emergencyId,
-      hospitalId,
-      hospitalName,
-    });
+    console.log("=== HOSPITAL ACCEPTANCE NOTIFICATION ===");
+    console.log("Emergency ID:", emergencyId);
+    console.log("Hospital:", hospitalName);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -108,40 +134,44 @@ serve(async (req) => {
       .eq("user_id", emergency.user_id);
 
     if (!guardians || guardians.length === 0) {
-      console.log("No guardian found for user");
+      console.log("No guardians found for user");
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "No guardian to notify" 
+        JSON.stringify({
+          success: true,
+          message: "No guardian to notify",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log("Guardians to notify:", guardians.length);
 
     const userName = profile?.name || "Your loved one";
     const patientAddress = profile?.address || "Address not available";
 
     // Get address from hospital location if not provided
     let finalHospitalAddress = hospitalAddress;
-    if (!finalHospitalAddress) {
-      // Get hospital coordinates
+    if (!finalHospitalAddress && hospitalId) {
       const { data: hospital } = await supabase
         .from("hospitals")
         .select("latitude, longitude")
         .eq("id", hospitalId)
         .single();
-      
+
       if (hospital) {
-        finalHospitalAddress = await getAddressFromCoordinates(hospital.latitude, hospital.longitude);
+        finalHospitalAddress = await getAddressFromCoordinates(
+          hospital.latitude,
+          hospital.longitude
+        );
       }
     }
 
-    // Build patient location link using correct Google Maps format
+    // Build patient location link using standard Google Maps format
     const patientMapsLink = patientLocation
       ? `https://maps.google.com/?q=${patientLocation.latitude},${patientLocation.longitude}`
       : "";
 
-    // Build SMS message with hospital details and patient address
+    // Build SMS message with hospital details
     const smsMessage = `✅ HOSPITAL UPDATE\n\n${userName} has been accepted by:\n\n🏥 ${hospitalName}\n📍 Hospital: ${finalHospitalAddress || "Address not available"}${hospitalPhone ? `\n📞 ${hospitalPhone}` : ""}\n\n📋 Patient Address: ${patientAddress}${patientMapsLink ? `\n📍 Patient Location: ${patientMapsLink}` : ""}\n\nThe hospital is preparing to dispatch an ambulance.`;
 
     // Get Twilio credentials
@@ -151,82 +181,113 @@ serve(async (req) => {
 
     const results: any[] = [];
 
-    if (twilioAccountSid && twilioAuthToken && twilioPhoneNumber) {
-      const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+      console.log("Twilio credentials not configured");
+      return new Response(
+        JSON.stringify({
+          success: true,
+          smsStatus: "not_configured",
+          message: "SMS requires Twilio configuration",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-      // Send SMS to ALL guardians
-      for (const guardian of guardians) {
-        const formattedPhone = formatPhoneNumber(guardian.contact_number);
-        
-        try {
-          const response = await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Basic ${auth}`,
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({
-                To: formattedPhone,
-                From: twilioPhoneNumber,
-                Body: smsMessage,
-              }),
-            }
-          );
+    const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
 
-          const responseText = await response.text();
-          let twilio: any = null;
-          try {
-            twilio = JSON.parse(responseText);
-          } catch {
-            twilio = { raw: responseText };
-          }
+    // Send SMS to ALL guardians
+    for (const guardian of guardians) {
+      const { formatted: formattedPhone, isValid } = formatPhoneNumber(guardian.contact_number);
 
-          console.log("Hospital acceptance SMS response:", {
-            ok: response.ok,
-            status: response.status,
-            to: formattedPhone,
-            guardianName: guardian.name,
-            sid: twilio?.sid,
-            twilioStatus: twilio?.status,
-            errorCode: twilio?.error_code,
-          });
-
-          results.push({
-            guardianName: guardian.name,
-            to: formattedPhone,
-            success: response.ok,
-            sid: twilio?.sid,
-            twilioStatus: twilio?.status,
-            errorCode: twilio?.code,
-          });
-        } catch (error: any) {
-          console.error("Error sending SMS to guardian:", guardian.name, error);
-          results.push({
-            guardianName: guardian.name,
-            to: formattedPhone,
-            success: false,
-            error: error?.message,
-          });
-        }
+      // Skip invalid phone numbers
+      if (!isValid || !formattedPhone) {
+        console.warn(`Skipping invalid phone for guardian ${guardian.name}:`, guardian.contact_number);
+        results.push({
+          guardianName: guardian.name,
+          to: guardian.contact_number,
+          success: false,
+          skipped: true,
+          error: "Invalid phone number format",
+        });
+        continue;
       }
-    } else {
-      console.log("Twilio credentials not configured. SMS message would be:", smsMessage);
+
+      try {
+        console.log(`Sending hospital acceptance SMS to ${guardian.name}: ${formattedPhone}`);
+
+        const response = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${auth}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              To: formattedPhone,
+              From: twilioPhoneNumber,
+              Body: smsMessage,
+            }),
+          }
+        );
+
+        const responseText = await response.text();
+        let twilio: any = null;
+        try {
+          twilio = JSON.parse(responseText);
+        } catch {
+          twilio = { raw: responseText };
+        }
+
+        console.log("Hospital acceptance SMS response:", {
+          ok: response.ok,
+          status: response.status,
+          to: formattedPhone,
+          guardianName: guardian.name,
+          sid: twilio?.sid,
+          twilioStatus: twilio?.status,
+          errorCode: twilio?.error_code ?? twilio?.code,
+        });
+
+        results.push({
+          guardianName: guardian.name,
+          to: formattedPhone,
+          success: response.ok,
+          sid: twilio?.sid,
+          twilioStatus: twilio?.status,
+          errorCode: response.ok ? undefined : (twilio?.code ?? twilio?.error_code),
+        });
+      } catch (error: any) {
+        console.error(`Error sending SMS to guardian ${guardian.name}:`, error);
+        results.push({
+          guardianName: guardian.name,
+          to: formattedPhone,
+          success: false,
+          error: error?.message,
+        });
+      }
     }
 
     const anySuccess = results.some((r) => r.success);
-    const allSuccess = results.every((r) => r.success);
+    const allSuccess = results.every((r) => r.success || r.skipped);
+    const sentCount = results.filter((r) => r.success).length;
+
+    console.log("=== HOSPITAL ACCEPTANCE SMS SUMMARY ===");
+    console.log(`Sent: ${sentCount}/${results.length}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        smsStatus: results.length === 0 ? "not_configured" : anySuccess ? (allSuccess ? "all_sent" : "partial") : "failed",
+        smsStatus: results.length === 0
+          ? "not_configured"
+          : anySuccess
+          ? allSuccess
+            ? "all_sent"
+            : "partial"
+          : "failed",
         results,
-        message: anySuccess 
-          ? `Notified ${results.filter(r => r.success).length} of ${results.length} guardian(s)`
-          : results.length === 0 
-          ? "SMS requires Twilio configuration"
+        message: anySuccess
+          ? `Notified ${sentCount} of ${results.length} guardian(s)`
           : "Failed to send SMS to guardians",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
