@@ -7,6 +7,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * Reverse geocode coordinates to human-readable address
+ */
 async function getAddressFromCoordinates(lat: number, lng: number): Promise<string> {
   try {
     const response = await fetch(
@@ -29,20 +32,42 @@ async function getAddressFromCoordinates(lat: number, lng: number): Promise<stri
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\(\)]/g, "").trim();
+/**
+ * Format phone number to E.164 format (+91XXXXXXXXXX for India)
+ */
+function formatPhoneNumber(phone: string): { formatted: string; isValid: boolean } {
+  if (!phone || typeof phone !== "string") {
+    return { formatted: "", isValid: false };
+  }
 
-  if (cleaned.startsWith("+")) return cleaned;
+  let cleaned = phone.replace(/[^\d+]/g, "").trim();
+
+  if (!cleaned) {
+    return { formatted: "", isValid: false };
+  }
+
+  if (cleaned.startsWith("+")) {
+    const isValid = /^\+[1-9]\d{6,14}$/.test(cleaned);
+    return { formatted: cleaned, isValid };
+  }
 
   if (cleaned.startsWith("0")) {
     cleaned = cleaned.substring(1);
   }
 
-  if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
-    return `+91${cleaned}`;
+  if (cleaned.length === 10 && /^\d{10}$/.test(cleaned)) {
+    return { formatted: `+91${cleaned}`, isValid: true };
   }
 
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  if ((cleaned.length === 12 || cleaned.length === 11) && cleaned.startsWith("91")) {
+    const withPlus = `+${cleaned}`;
+    const isValid = /^\+91\d{10}$/.test(withPlus);
+    return { formatted: withPlus, isValid };
+  }
+
+  const withPlus = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  const isValid = /^\+[1-9]\d{6,14}$/.test(withPlus);
+  return { formatted: withPlus, isValid };
 }
 
 serve(async (req) => {
@@ -81,6 +106,10 @@ serve(async (req) => {
 
     const { guardianPhones, location } = await req.json();
 
+    console.log("=== TEST SMS REQUEST ===");
+    console.log("User:", userRes.user.email);
+    console.log("Guardian phones:", guardianPhones?.length || 0);
+
     // Validate guardians array
     if (!guardianPhones || !Array.isArray(guardianPhones) || guardianPhones.length === 0) {
       return new Response(
@@ -102,7 +131,8 @@ serve(async (req) => {
       });
     }
 
-    const mapsLink = `https://maps.google.com/maps?q=${location.latitude},${location.longitude}`;
+    // Standard Google Maps link format
+    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
     const exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
 
     const smsBody =
@@ -116,6 +146,7 @@ serve(async (req) => {
     const twilioPhoneNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+      console.log("Twilio credentials not configured");
       return new Response(
         JSON.stringify({
           success: false,
@@ -134,9 +165,23 @@ serve(async (req) => {
     // Send SMS to ALL guardians
     const results: any[] = [];
     for (const phone of guardianPhones) {
-      const formattedTo = formatPhoneNumber(phone);
+      const { formatted: formattedTo, isValid } = formatPhoneNumber(phone);
+
+      // Skip invalid phone numbers
+      if (!isValid || !formattedTo) {
+        console.warn(`Skipping invalid phone number: ${phone}`);
+        results.push({
+          to: phone,
+          success: false,
+          skipped: true,
+          error: "Invalid phone number format",
+        });
+        continue;
+      }
 
       try {
+        console.log(`Sending test SMS to: ${formattedTo}`);
+
         const response = await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
           {
@@ -167,8 +212,8 @@ serve(async (req) => {
           to: formattedTo,
           sid: twilio?.sid,
           twilioStatus: twilio?.status,
-          errorCode: twilio?.code,
-          errorMessage: twilio?.message,
+          errorCode: twilio?.code ?? twilio?.error_code,
+          errorMessage: twilio?.message ?? twilio?.error_message,
         });
 
         results.push({
@@ -177,11 +222,11 @@ serve(async (req) => {
           status: response.status,
           sid: twilio?.sid,
           twilioStatus: twilio?.status,
-          errorCode: twilio?.code,
-          errorMessage: twilio?.message,
+          errorCode: response.ok ? undefined : (twilio?.code ?? twilio?.error_code),
+          errorMessage: response.ok ? undefined : (twilio?.message ?? twilio?.error_message),
         });
       } catch (e: any) {
-        console.error("Test SMS send error:", e);
+        console.error(`Test SMS send error to ${formattedTo}:`, e);
         results.push({
           to: formattedTo,
           success: false,
@@ -190,8 +235,12 @@ serve(async (req) => {
       }
     }
 
-    const allSuccess = results.every((r) => r.success);
+    const allSuccess = results.every((r) => r.success || r.skipped);
     const anySuccess = results.some((r) => r.success);
+    const sentCount = results.filter((r) => r.success).length;
+
+    console.log("=== TEST SMS SUMMARY ===");
+    console.log(`Sent: ${sentCount}/${results.length}`);
 
     return new Response(
       JSON.stringify({
@@ -199,6 +248,12 @@ serve(async (req) => {
         allSuccess,
         results,
         mapsLink,
+        summary: {
+          total: results.length,
+          sent: sentCount,
+          failed: results.filter((r) => !r.success && !r.skipped).length,
+          skipped: results.filter((r) => r.skipped).length,
+        },
       }),
       {
         status: 200,
