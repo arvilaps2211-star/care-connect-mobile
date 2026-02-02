@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor, Users } from "lucide-react";
 import OpenStreetMapEmbed from "@/components/OpenStreetMapEmbed";
 import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
+import { watchWebLocation } from "@/utils/webGeolocation";
 
 interface Guardian {
   name: string;
@@ -85,21 +86,23 @@ const HospitalDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Watch current location for GPS tracking
+  // Watch current location for GPS tracking - web-safe
   useEffect(() => {
-    if (showMap && navigator.geolocation) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setCurrentLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        (error) => console.error("GPS error:", error),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
+    if (!showMap) return;
+    
+    const cleanup = watchWebLocation(
+      (location) => {
+        setCurrentLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+      },
+      (error) => {
+        console.warn("[HospitalDashboard] GPS error:", error?.message || "GPS unavailable");
+      }
+    );
+    
+    return cleanup;
   }, [showMap]);
 
   useEffect(() => {

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
 import { calculateETA, getETAStatus } from "@/utils/eta";
+import { watchWebLocation, isGeolocationAvailable } from "@/utils/webGeolocation";
 
 interface Guardian {
   id: string;
@@ -105,17 +106,19 @@ const AmbulanceDriverDashboard = () => {
     }
   }, []);
 
-  // Watch current location for GPS tracking
+  // Watch current location for GPS tracking - web-safe
   useEffect(() => {
-    if (!navigator.geolocation) return;
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
+    // Log GPS availability for debugging
+    console.log('[AmbulanceDriver] GPS available:', isGeolocationAvailable());
+    
+    // Use web-safe geolocation utility
+    const cleanup = watchWebLocation(
+      (location) => {
         const next: DriverLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: position.timestamp,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
+          timestamp: location.timestamp,
         };
 
         // Prefer more accurate fixes; still refresh periodically.
@@ -134,11 +137,13 @@ const AmbulanceDriverDashboard = () => {
           return prev;
         });
       },
-      (error) => console.error("GPS error:", error),
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      (error) => {
+        // Graceful handling - just log, don't crash
+        console.warn("[AmbulanceDriver] GPS watch error:", error?.message || "GPS unavailable");
+      }
     );
 
-    return () => navigator.geolocation.clearWatch(watchId);
+    return cleanup;
   }, []);
 
   useEffect(() => {
