@@ -1,6 +1,6 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { useAuth, AppRole } from "@/hooks/useAuth";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,11 +8,21 @@ interface ProtectedRouteProps {
   redirectTo?: string;
 }
 
+// WEB DEV MODE: Allow bypass with warning instead of blocking
+const isWebDevMode = import.meta.env.DEV;
+
 const ProtectedRoute = ({ children, requiredRole, redirectTo = "/auth" }: ProtectedRouteProps) => {
-  const { loading, initialized, user, isAuthorized } = useAuth({
+  const { loading, initialized, user, role, isAuthorized } = useAuth({
     requiredRole,
     redirectTo,
   });
+
+  // In web dev mode, if role check fails but user exists, log warning
+  useEffect(() => {
+    if (isWebDevMode && initialized && !loading && user && requiredRole && !isAuthorized) {
+      console.warn(`[ProtectedRoute] DEV MODE: User has role "${role}" but route requires "${requiredRole}". Allowing with warning.`);
+    }
+  }, [initialized, loading, user, role, requiredRole, isAuthorized]);
 
   // Show loading spinner while checking auth
   if (!initialized || loading) {
@@ -31,7 +41,26 @@ const ProtectedRoute = ({ children, requiredRole, redirectTo = "/auth" }: Protec
     return null; // Will redirect via useAuth
   }
 
-  // If role required but not authorized
+  // DEV MODE BYPASS: Allow access with warning banner
+  if (isWebDevMode && user && requiredRole && !isAuthorized) {
+    return (
+      <div className="min-h-screen">
+        {/* Dev mode warning banner */}
+        <div className="bg-amber-500/20 border-b border-amber-500/30 px-4 py-2">
+          <div className="flex items-center gap-2 max-w-7xl mx-auto">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span className="text-amber-300 text-sm">
+              <strong>DEV MODE:</strong> Role mismatch - User has "{role}" but route requires "{String(requiredRole)}". 
+              Access allowed for debugging.
+            </span>
+          </div>
+        </div>
+        {children}
+      </div>
+    );
+  }
+
+  // If role required but not authorized (production mode)
   if (requiredRole && !isAuthorized) {
     return null; // Will redirect via useAuth
   }
