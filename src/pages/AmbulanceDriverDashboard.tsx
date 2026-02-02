@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
 import { calculateETA, getETAStatus } from "@/utils/eta";
-import { watchWebLocation, isGeolocationAvailable } from "@/utils/webGeolocation";
+import { watchWebLocation, isGeolocationAvailable, getDefaultLocation } from "@/utils/webGeolocation";
+import FallbackLocationNotice from "@/components/FallbackLocationNotice";
 
 interface Guardian {
   id: string;
@@ -68,6 +69,8 @@ const AmbulanceDriverDashboard = () => {
   const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
   const [currentLocation, setCurrentLocation] = useState<DriverLocation | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [usingFallbackLocation, setUsingFallbackLocation] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -109,11 +112,30 @@ const AmbulanceDriverDashboard = () => {
   // Watch current location for GPS tracking - web-safe
   useEffect(() => {
     // Log GPS availability for debugging
-    console.log('[AmbulanceDriver] GPS available:', isGeolocationAvailable());
+    const gpsAvailable = isGeolocationAvailable();
+    console.log('[AMBULANCE] GPS available:', gpsAvailable);
+    
+    if (!gpsAvailable) {
+      console.log('[AMBULANCE] GPS not available, using fallback location');
+      setUsingFallbackLocation(true);
+      setGpsError("Geolocation not available in this browser");
+      // Set default location so map can still render
+      const defaultLoc = getDefaultLocation();
+      setCurrentLocation({
+        latitude: defaultLoc.latitude,
+        longitude: defaultLoc.longitude,
+        accuracy: defaultLoc.accuracy,
+        timestamp: Date.now(),
+      });
+      return () => {};
+    }
     
     // Use web-safe geolocation utility
     const cleanup = watchWebLocation(
       (location) => {
+        setUsingFallbackLocation(location.isDefault || false);
+        setGpsError(null);
+        
         const next: DriverLocation = {
           latitude: location.latitude,
           longitude: location.longitude,
@@ -138,8 +160,22 @@ const AmbulanceDriverDashboard = () => {
         });
       },
       (error) => {
-        // Graceful handling - just log, don't crash
-        console.warn("[AmbulanceDriver] GPS watch error:", error?.message || "GPS unavailable");
+        // Graceful handling - set fallback state, don't crash
+        const errorMsg = error?.message || "GPS unavailable";
+        console.warn("[AMBULANCE] GPS watch error:", errorMsg);
+        setGpsError(errorMsg);
+        setUsingFallbackLocation(true);
+        
+        // Set default location so UI doesn't break
+        if (!currentLocation) {
+          const defaultLoc = getDefaultLocation();
+          setCurrentLocation({
+            latitude: defaultLoc.latitude,
+            longitude: defaultLoc.longitude,
+            accuracy: defaultLoc.accuracy,
+            timestamp: Date.now(),
+          });
+        }
       }
     );
 
@@ -147,13 +183,18 @@ const AmbulanceDriverDashboard = () => {
   }, []);
 
   useEffect(() => {
+    console.log("[AMBULANCE] Initializing driver dashboard, ambulanceId:", ambulanceId);
     if (!ambulanceId) {
+      console.warn("[AMBULANCE] No ambulance ID in URL params");
       toast({
         title: "Error",
-        description: "No ambulance ID provided",
+        description: "No ambulance ID provided. Use ?id=<ambulance-id> in URL.",
         variant: "destructive",
       });
-      navigate("/hospital/login");
+      // Don't navigate away in dev mode - just show warning
+      if (!import.meta.env.DEV) {
+        navigate("/hospital/login");
+      }
       return;
     }
     fetchAmbulanceInfo();
@@ -170,25 +211,48 @@ const AmbulanceDriverDashboard = () => {
   }, [ambulanceInfo]);
 
   const fetchAmbulanceInfo = async () => {
-    if (!ambulanceId) return;
-
-    const { data, error } = await supabase
-      .from("ambulance_services")
-      .select("id, name, contact_number")
-      .eq("id", ambulanceId)
-      .single();
-
-    if (error || !data) {
-      toast({
-        title: "Error",
-        description: "Ambulance not found",
-        variant: "destructive",
-      });
-      navigate("/hospital/login");
+    if (!ambulanceId) {
+      console.warn("[AMBULANCE] No ambulance ID, skipping fetch");
       return;
     }
 
-    setAmbulanceInfo(data);
+    try {
+      console.log("[AMBULANCE] Fetching ambulance info for ID:", ambulanceId);
+      const { data, error } = await supabase
+        .from("ambulance_services")
+        .select("id, name, contact_number")
+        .eq("id", ambulanceId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[AMBULANCE] Error fetching ambulance:", error.message);
+        toast({
+          title: "Error",
+          description: `Failed to load ambulance: ${error.message}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!data) {
+        console.warn("[AMBULANCE] Ambulance not found for ID:", ambulanceId);
+        toast({
+          title: "Ambulance Not Found",
+          description: "The specified ambulance does not exist.",
+          variant: "destructive",
+        });
+        // Don't navigate away in dev mode
+        if (!import.meta.env.DEV) {
+          navigate("/hospital/login");
+        }
+        return;
+      }
+
+      console.log("[AMBULANCE] Loaded ambulance:", data.name);
+      setAmbulanceInfo(data);
+    } catch (err: any) {
+      console.error("[AMBULANCE] Exception fetching ambulance:", err);
+    }
   };
 
   const fetchCases = async () => {
@@ -678,6 +742,16 @@ const AmbulanceDriverDashboard = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Fallback Location Notice */}
+        <FallbackLocationNotice show={usingFallbackLocation} className="mb-4" />
+        
+        {/* GPS Error Notice */}
+        {gpsError && !usingFallbackLocation && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+            <p className="text-red-300 text-sm">GPS Error: {gpsError}</p>
+          </div>
+        )}
+        
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <Card className="bg-slate-800/50 border-slate-700">

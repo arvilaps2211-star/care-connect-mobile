@@ -23,7 +23,9 @@ const DEFAULT_LOCATION: WebLocation = {
  * Check if geolocation is available in the browser
  */
 export const isGeolocationAvailable = (): boolean => {
-  return typeof navigator !== 'undefined' && 'geolocation' in navigator;
+  const available = typeof navigator !== 'undefined' && 'geolocation' in navigator;
+  console.log('[WEB-GEO] Geolocation available:', available);
+  return available;
 };
 
 /**
@@ -33,13 +35,14 @@ export const isGeolocationAvailable = (): boolean => {
 export const getWebLocation = (): Promise<WebLocation> => {
   return new Promise((resolve) => {
     if (!isGeolocationAvailable()) {
-      console.log('[WebGeo] Geolocation not available, using default location');
+      console.log('[WEB-GEO] Geolocation not available, using default location');
       resolve(DEFAULT_LOCATION);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        console.log('[WEB-GEO] Got position:', position.coords.latitude, position.coords.longitude);
         resolve({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -49,7 +52,7 @@ export const getWebLocation = (): Promise<WebLocation> => {
         });
       },
       (error) => {
-        console.warn('[WebGeo] Geolocation error:', error.message, '- using default location');
+        console.warn('[WEB-GEO] Geolocation error:', error.code, error.message, '- using default location');
         resolve(DEFAULT_LOCATION);
       },
       {
@@ -70,12 +73,14 @@ export const watchWebLocation = (
   onError?: (error: GeolocationPositionError | null) => void
 ): (() => void) => {
   if (!isGeolocationAvailable()) {
-    console.log('[WebGeo] Geolocation not available, watch skipped');
+    console.log('[WEB-GEO] Geolocation not available, watch skipped');
     onError?.(null);
     // Return no-op cleanup
     return () => {};
   }
 
+  console.log('[WEB-GEO] Starting location watch...');
+  
   const watchId = navigator.geolocation.watchPosition(
     (position) => {
       onSuccess({
@@ -87,7 +92,7 @@ export const watchWebLocation = (
       });
     },
     (error) => {
-      console.warn('[WebGeo] Watch position error:', error.message);
+      console.warn('[WEB-GEO] Watch position error:', error.code, error.message);
       onError?.(error);
     },
     {
@@ -99,6 +104,14 @@ export const watchWebLocation = (
 
   // Return cleanup function
   return () => {
+    console.log('[WEB-GEO] Stopping location watch');
     navigator.geolocation.clearWatch(watchId);
   };
+};
+
+/**
+ * Get the default fallback location
+ */
+export const getDefaultLocation = (): WebLocation => {
+  return { ...DEFAULT_LOCATION };
 };

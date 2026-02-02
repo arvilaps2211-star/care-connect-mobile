@@ -12,12 +12,16 @@ interface AuthState {
   role: AppRole | null;
   loading: boolean;
   initialized: boolean;
+  roleError: string | null;
 }
 
 interface UseAuthOptions {
   requiredRole?: AppRole | AppRole[];
   redirectTo?: string;
 }
+
+// WEB DEV MODE detection
+const isWebDevMode = import.meta.env.DEV;
 
 export const useAuth = (options: UseAuthOptions = {}) => {
   const { requiredRole, redirectTo = "/auth" } = options;
@@ -27,27 +31,36 @@ export const useAuth = (options: UseAuthOptions = {}) => {
     role: null,
     loading: true,
     initialized: false,
+    roleError: null,
   });
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const checkRole = useCallback(async (userId: string): Promise<AppRole | null> => {
+  const checkRole = useCallback(async (userId: string): Promise<{ role: AppRole | null; error: string | null }> => {
     try {
+      console.log("[AUTH] Checking role for user:", userId);
+      
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid errors when no role exists
 
-      if (error || !data) {
-        // Default to 'user' role if no role found
-        return "user";
+      if (error) {
+        console.warn("[ROLE] Error fetching role:", error.message);
+        return { role: "user", error: error.message };
       }
 
-      return data.role as AppRole;
-    } catch (error) {
-      console.error("[Auth] Error checking role:", error);
-      return "user";
+      if (!data) {
+        console.log("[ROLE] No role found for user, defaulting to 'user'");
+        return { role: "user", error: null };
+      }
+
+      console.log("[ROLE] Found role:", data.role);
+      return { role: data.role as AppRole, error: null };
+    } catch (error: any) {
+      console.error("[AUTH] Exception checking role:", error);
+      return { role: "user", error: error.message };
     }
   }, []);
 
@@ -60,31 +73,85 @@ export const useAuth = (options: UseAuthOptions = {}) => {
   }, [requiredRole]);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
+    let isMounted = true;
+
+    const initializeAuth = async () => {
+      console.log("[AUTH] Initializing auth state...");
+      
+      // Get current session first
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn("[AUTH] Session error:", sessionError.message);
+      }
+
+      if (!isMounted) return;
+
+      if (session?.user) {
+        console.log("[AUTH] Found existing session for:", session.user.email);
+        
+        setState(prev => ({
+          ...prev,
+          session,
+          user: session.user,
+        }));
+
+        const { role, error: roleError } = await checkRole(session.user.id);
+        
+        if (!isMounted) return;
+        
+        setState(prev => ({
+          ...prev,
+          role,
+          roleError,
+          loading: false,
+          initialized: true,
+        }));
+      } else {
+        console.log("[AUTH] No session found");
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          initialized: true,
+        }));
+      }
+    };
+
+    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
+        console.log("[AUTH] Auth state changed:", event, session?.user?.email || "no user");
+        
+        if (!isMounted) return;
+
         setState(prev => ({
           ...prev,
           session,
           user: session?.user ?? null,
         }));
 
-        // Defer role check with setTimeout to avoid Supabase deadlock
         if (session?.user) {
-          setTimeout(() => {
-            checkRole(session.user.id).then(role => {
-              setState(prev => ({
-                ...prev,
-                role,
-                loading: false,
-                initialized: true,
-              }));
-            });
+          // Defer role check to avoid Supabase deadlock
+          setTimeout(async () => {
+            if (!isMounted) return;
+            
+            const { role, error: roleError } = await checkRole(session.user.id);
+            
+            if (!isMounted) return;
+            
+            setState(prev => ({
+              ...prev,
+              role,
+              roleError,
+              loading: false,
+              initialized: true,
+            }));
           }, 0);
         } else {
           setState(prev => ({
             ...prev,
             role: null,
+            roleError: null,
             loading: false,
             initialized: true,
           }));
@@ -92,57 +159,45 @@ export const useAuth = (options: UseAuthOptions = {}) => {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setState(prev => ({
-        ...prev,
-        session,
-        user: session?.user ?? null,
-      }));
+    initializeAuth();
 
-      if (session?.user) {
-        checkRole(session.user.id).then(role => {
-          setState(prev => ({
-            ...prev,
-            role,
-            loading: false,
-            initialized: true,
-          }));
-        });
-      } else {
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          initialized: true,
-        }));
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [checkRole]);
 
   // Handle access control after state is initialized
   useEffect(() => {
     if (!state.initialized || state.loading) return;
 
-    // No user - redirect to auth
+    // No user - redirect to auth (only in production or if explicitly required)
     if (!state.user && requiredRole) {
+      console.log("[AUTH] No user, redirecting to:", redirectTo);
       navigate(redirectTo);
       return;
     }
 
-    // User exists but wrong role
+    // User exists but wrong role - handle based on mode
     if (state.user && requiredRole && !validateAccess(state.role)) {
-      toast({
-        title: "Unauthorized Access",
-        description: "You don't have permission to access this page.",
-        variant: "destructive",
-      });
-      navigate(redirectTo);
+      if (isWebDevMode) {
+        // In dev mode, just log warning - ProtectedRoute will show banner
+        console.warn(`[AUTH] DEV MODE: Role mismatch - has "${state.role}", needs "${requiredRole}"`);
+      } else {
+        // Production: redirect
+        console.log("[AUTH] Role mismatch, redirecting to:", redirectTo);
+        toast({
+          title: "Unauthorized Access",
+          description: "You don't have permission to access this page.",
+          variant: "destructive",
+        });
+        navigate(redirectTo);
+      }
     }
   }, [state.initialized, state.loading, state.user, state.role, requiredRole, validateAccess, navigate, toast, redirectTo]);
 
   const signOut = useCallback(async () => {
+    console.log("[AUTH] Signing out...");
     await supabase.auth.signOut();
     navigate("/auth");
   }, [navigate]);

@@ -106,11 +106,14 @@ const HospitalDashboard = () => {
   }, [showMap]);
 
   useEffect(() => {
-    checkAuth();
+    // Auth is handled by ProtectedRoute - just fetch hospital info
+    console.log("[HOSPITAL] Initializing hospital dashboard...");
+    fetchHospitalInfo();
   }, []);
 
   useEffect(() => {
     if (entityInfo) {
+      console.log("[HOSPITAL] Entity info loaded, fetching emergencies...");
       fetchAllEmergencies();
       fetchAmbulances();
       const unsubscribe = subscribeToEmergencies();
@@ -120,54 +123,76 @@ const HospitalDashboard = () => {
     }
   }, [entityInfo]);
 
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      navigate("/hospital/login");
-      return;
+  const fetchHospitalInfo = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.warn("[HOSPITAL] No user found");
+        return;
+      }
+
+      console.log("[HOSPITAL] Fetching hospital for user:", user.id);
+      const { data: hospital, error } = await supabase
+        .from("hospitals")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.warn("[HOSPITAL] Error fetching hospital:", error.message);
+      }
+
+      if (hospital) {
+        console.log("[HOSPITAL] Found hospital:", hospital.name);
+        setEntityInfo(hospital);
+      } else {
+        console.warn("[HOSPITAL] No hospital found for this user");
+      }
+    } catch (err: any) {
+      console.error("[HOSPITAL] Exception fetching hospital info:", err);
     }
-
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!roles || roles.role !== "hospital") {
-      navigate("/hospital/login");
-      return;
-    }
-
-    const { data: hospital } = await supabase
-      .from("hospitals")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-    setEntityInfo(hospital);
   };
 
   const fetchAmbulances = async () => {
-    if (!entityInfo?.id) return;
+    if (!entityInfo?.id) {
+      console.log("[HOSPITAL] No entity info, skipping ambulance fetch");
+      return;
+    }
     
-    const { data } = await supabase
-      .from("hospital_ambulances")
-      .select(`
-        ambulance_id,
-        ambulance_services (
-          id,
-          name,
-          contact_number,
-          latitude,
-          longitude
-        )
-      `)
-      .eq("hospital_id", entityInfo.id);
+    try {
+      console.log("[HOSPITAL] Fetching ambulances for hospital:", entityInfo.id);
+      const { data, error } = await supabase
+        .from("hospital_ambulances")
+        .select(`
+          ambulance_id,
+          ambulance_services (
+            id,
+            name,
+            contact_number,
+            latitude,
+            longitude
+          )
+        `)
+        .eq("hospital_id", entityInfo.id);
 
-    if (data) {
-      const ambulanceList = data
-        .filter((item: any) => item.ambulance_services)
-        .map((item: any) => item.ambulance_services);
-      setAmbulances(ambulanceList);
+      if (error) {
+        console.warn("[HOSPITAL] Error fetching ambulances:", error.message);
+        setAmbulances([]);
+        return;
+      }
+
+      if (data) {
+        const ambulanceList = data
+          .filter((item: any) => item.ambulance_services)
+          .map((item: any) => item.ambulance_services);
+        console.log("[HOSPITAL] Loaded ambulances:", ambulanceList.length);
+        setAmbulances(ambulanceList);
+      } else {
+        setAmbulances([]);
+      }
+    } catch (err: any) {
+      console.error("[HOSPITAL] Exception fetching ambulances:", err);
+      setAmbulances([]);
     }
   };
 

@@ -36,46 +36,18 @@ const AdminPanel = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    checkAuth();
+    // Auth is handled by ProtectedRoute - just fetch data
+    console.log("[ADMIN] Initializing admin panel...");
     fetchData();
     fetchStats();
   }, []);
 
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
-
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!roles || roles.role !== "admin") {
-      toast({
-        title: "Access Denied",
-        description: "You do not have admin privileges.",
-        variant: "destructive",
-      });
-      navigate("/");
-      return;
-    }
-  };
-
   const fetchStats = async () => {
     try {
-      // Fetch emergency counts
-      const [
-        { count: totalEmergencies },
-        { count: activeEmergencies },
-        { count: resolvedEmergencies },
-        { count: totalHospitals },
-        { count: totalAmbulances },
-        { count: totalUsers },
-      ] = await Promise.all([
+      console.log("[ADMIN] Fetching stats...");
+      
+      // Fetch emergency counts with individual error handling
+      const [emergencyRes, activeRes, resolvedRes, hospitalRes, ambulanceRes, userRes] = await Promise.all([
         supabase.from("emergencies").select("*", { count: "exact", head: true }),
         supabase.from("emergencies").select("*", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("emergencies").select("*", { count: "exact", head: true }).in("status", ["resolved", "closed"]),
@@ -84,35 +56,69 @@ const AdminPanel = () => {
         supabase.from("profiles").select("*", { count: "exact", head: true }),
       ]);
 
+      // Log any errors but don't crash
+      if (emergencyRes.error) console.warn("[ADMIN] Error fetching emergencies:", emergencyRes.error.message);
+      if (activeRes.error) console.warn("[ADMIN] Error fetching active emergencies:", activeRes.error.message);
+      if (resolvedRes.error) console.warn("[ADMIN] Error fetching resolved emergencies:", resolvedRes.error.message);
+      if (hospitalRes.error) console.warn("[ADMIN] Error fetching hospitals:", hospitalRes.error.message);
+      if (ambulanceRes.error) console.warn("[ADMIN] Error fetching ambulances:", ambulanceRes.error.message);
+      if (userRes.error) console.warn("[ADMIN] Error fetching users:", userRes.error.message);
+
       setStats({
-        totalEmergencies: totalEmergencies || 0,
-        activeEmergencies: activeEmergencies || 0,
-        resolvedEmergencies: resolvedEmergencies || 0,
-        totalHospitals: totalHospitals || 0,
-        totalAmbulances: totalAmbulances || 0,
-        totalUsers: totalUsers || 0,
+        totalEmergencies: emergencyRes.count || 0,
+        activeEmergencies: activeRes.count || 0,
+        resolvedEmergencies: resolvedRes.count || 0,
+        totalHospitals: hospitalRes.count || 0,
+        totalAmbulances: ambulanceRes.count || 0,
+        totalUsers: userRes.count || 0,
       });
-    } catch (error) {
-      console.error("Error fetching stats:", error);
+      
+      console.log("[ADMIN] Stats loaded successfully");
+    } catch (error: any) {
+      console.error("[ADMIN] Exception fetching stats:", error?.message || error);
     }
   };
 
   const fetchData = async () => {
     setLoading(true);
     
-    // Fetch hospitals with verification status (NO patient data)
-    const { data: hospitalsData } = await supabase
-      .from("hospitals")
-      .select("id, name, contact_number, latitude, longitude, created_at");
+    try {
+      console.log("[ADMIN] Fetching data...");
+      
+      // Fetch hospitals with verification status (NO patient data)
+      const { data: hospitalsData, error: hospitalError } = await supabase
+        .from("hospitals")
+        .select("id, name, contact_number, latitude, longitude, created_at");
 
-    // Fetch ambulances (NO patient/guardian data)
-    const { data: ambulancesData } = await supabase
-      .from("ambulance_services")
-      .select("id, name, contact_number, latitude, longitude, created_at");
+      if (hospitalError) {
+        console.warn("[ADMIN] Error fetching hospitals:", hospitalError.message);
+      }
 
-    if (hospitalsData) setHospitals(hospitalsData);
-    if (ambulancesData) setAmbulances(ambulancesData);
-    setLoading(false);
+      // Fetch ambulances (NO patient/guardian data)
+      const { data: ambulancesData, error: ambulanceError } = await supabase
+        .from("ambulance_services")
+        .select("id, name, contact_number, latitude, longitude, created_at");
+
+      if (ambulanceError) {
+        console.warn("[ADMIN] Error fetching ambulances:", ambulanceError.message);
+      }
+
+      // Set data even if partially failed
+      setHospitals(hospitalsData || []);
+      setAmbulances(ambulancesData || []);
+      
+      console.log("[ADMIN] Data loaded:", {
+        hospitals: hospitalsData?.length || 0,
+        ambulances: ambulancesData?.length || 0,
+      });
+    } catch (error: any) {
+      console.error("[ADMIN] Exception fetching data:", error?.message || error);
+      // Set empty arrays to prevent null crashes
+      setHospitals([]);
+      setAmbulances([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddHospital = async (e: React.FormEvent<HTMLFormElement>) => {
