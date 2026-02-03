@@ -9,10 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { LogOut, AlertCircle, MapPin, Phone, Clock, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor, Users } from "lucide-react";
+import { LogOut, AlertCircle, MapPin, Phone, User, Heart, Navigation, Activity, Archive, FileX, CheckCircle, Ambulance, Map, Plus, Trash2, Truck, X, Timer, Monitor, Users } from "lucide-react";
 import OpenStreetMapEmbed from "@/components/OpenStreetMapEmbed";
 import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
 import { watchWebLocation } from "@/utils/webGeolocation";
+import { sendHospitalAcceptanceSMS, sendAmbulanceDispatchSMS } from "@/utils/smsService";
+import { SMSNotificationSummary } from "@/components/SMSStatusBadge";
 
 interface Guardian {
   name: string;
@@ -30,6 +32,8 @@ interface Emergency {
   accepted_by_ambulance: string | null;
   dispatched_to_ambulance: string | null;
   resolved_at: string | null;
+  notified_at: string | null;
+  guardian_notified: boolean | null;
   profiles: {
     name: string;
     phone: string;
@@ -326,34 +330,44 @@ const HospitalDashboard = () => {
 
       if (error) throw error;
 
-      // Notify guardian that hospital has accepted the case
-      try {
-        const { error: notifyError } = await supabase.functions.invoke('notify-hospital-acceptance', {
-          body: {
-            emergencyId: emergency.id,
-            hospitalId: entityInfo?.id,
-            hospitalName: entityInfo?.name,
-            hospitalPhone: entityInfo?.contact_number,
-            patientLocation: {
-              latitude: emergency.latitude,
-              longitude: emergency.longitude,
-            },
-          },
-        });
-        
-        if (notifyError) {
-          console.error("Failed to notify guardian:", notifyError);
-        } else {
-          console.log("Guardian notified of hospital acceptance");
-        }
-      } catch (notifyErr) {
-        console.error("Guardian notification error:", notifyErr);
-      }
-
-      toast({
-        title: "Emergency Accepted",
-        description: "Guardian has been notified. Dispatch an ambulance when ready.",
+      // Notify guardian using SMS service
+      console.log("[SMS] Sending hospital acceptance notification...");
+      const smsResult = await sendHospitalAcceptanceSMS({
+        emergencyId: emergency.id,
+        hospitalId: entityInfo?.id,
+        hospitalName: entityInfo?.name,
+        hospitalPhone: entityInfo?.contact_number,
+        patientLocation: {
+          latitude: emergency.latitude,
+          longitude: emergency.longitude,
+        },
       });
+
+      console.log("[SMS] Hospital acceptance result:", smsResult);
+
+      if (smsResult.status === "sent") {
+        toast({
+          title: "Emergency Accepted",
+          description: "Guardian has been notified via SMS. Dispatch an ambulance when ready.",
+        });
+      } else if (smsResult.status === "simulated") {
+        toast({
+          title: "Emergency Accepted (DEV Mode)",
+          description: "SMS simulated. Dispatch an ambulance when ready.",
+        });
+      } else if (smsResult.status === "not_configured") {
+        toast({
+          title: "Emergency Accepted",
+          description: "SMS not configured. Dispatch an ambulance when ready.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Emergency Accepted",
+          description: `SMS notification issue: ${smsResult.error || "Unknown error"}. Dispatch an ambulance when ready.`,
+          variant: "destructive",
+        });
+      }
 
       fetchAllEmergencies();
     } catch (error: any) {
@@ -389,39 +403,43 @@ const HospitalDashboard = () => {
 
       if (error) throw error;
 
-      // Send notification to ambulance driver via edge function
-      try {
-        const { error: notifyError } = await supabase.functions.invoke('notify-ambulance-dispatch', {
-          body: {
-            emergencyId: emergencyToDispatch.id,
-            ambulanceId: selectedAmbulanceId,
-            patientName: emergencyToDispatch.profiles.name,
-            patientPhone: emergencyToDispatch.profiles.phone,
-            location: {
-              latitude: emergencyToDispatch.latitude,
-              longitude: emergencyToDispatch.longitude,
-            },
-          },
-        });
-        
-        if (notifyError) {
-          console.error("Failed to send notification:", notifyError);
-        } else {
-          console.log("Ambulance driver notified successfully");
-        }
-      } catch (notifyErr) {
-        console.error("Notification error:", notifyErr);
-      }
+      // Send notification to ambulance driver using SMS service
+      console.log("[SMS] Sending ambulance dispatch notification...");
+      const smsResult = await sendAmbulanceDispatchSMS({
+        emergencyId: emergencyToDispatch.id,
+        ambulanceId: selectedAmbulanceId,
+        patientName: emergencyToDispatch.profiles.name,
+        patientPhone: emergencyToDispatch.profiles.phone,
+        location: {
+          latitude: emergencyToDispatch.latitude,
+          longitude: emergencyToDispatch.longitude,
+        },
+      });
+
+      console.log("[SMS] Dispatch result:", smsResult);
 
       // Set up GPS tracking
       setSelectedEmergency(emergencyToDispatch);
       setShowMap(true);
       setShowDispatchModal(false);
 
-      toast({
-        title: "Ambulance Dispatched",
-        description: "The ambulance driver has been notified via SMS.",
-      });
+      if (smsResult.status === "sent") {
+        toast({
+          title: "Ambulance Dispatched",
+          description: "The ambulance driver has been notified via SMS.",
+        });
+      } else if (smsResult.status === "simulated") {
+        toast({
+          title: "Ambulance Dispatched (DEV Mode)",
+          description: "SMS simulated. Ambulance is on the way.",
+        });
+      } else {
+        toast({
+          title: "Ambulance Dispatched",
+          description: `SMS issue: ${smsResult.error || "Notification may have failed"}. Please contact driver directly.`,
+          variant: "destructive",
+        });
+      }
 
       fetchAllEmergencies();
     } catch (error: any) {
@@ -630,6 +648,11 @@ const HospitalDashboard = () => {
                 {getAmbulanceName(emergency.dispatched_to_ambulance)}
               </Badge>
             )}
+            {/* SMS Notification Status */}
+            <SMSNotificationSummary
+              guardianNotified={emergency.guardian_notified}
+              notifiedAt={emergency.notified_at}
+            />
             <Badge variant="outline" className="border-blue-500/30 text-blue-400">
               <Navigation className="w-3 h-3 mr-1" />
               {getDistanceFromHospital(emergency)} km
