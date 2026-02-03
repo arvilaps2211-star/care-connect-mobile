@@ -4,17 +4,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, Shield, Activity, MapPin, RefreshCw, Navigation } from "lucide-react";
+import { AlertCircle, Heart, LogOut, Settings, Shield, Activity, MapPin, RefreshCw, Navigation, MessageSquare } from "lucide-react";
 import AccelerometerMonitor from "@/components/AccelerometerMonitor";
 import { useSOSContext } from "@/contexts/SOSContext";
 import { useLocation } from "@/hooks/useLocation";
 import GPSTracker from "@/components/GPSTracker";
+import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
+import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [isSendingSMS, setIsSendingSMS] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { triggerSOS, setEmergencyHandler } = useSOSContext();
@@ -25,8 +30,8 @@ const Dashboard = () => {
     highAccuracy: true,
   });
 
-  // Emergency handling logic
-  const handleEmergencyConfirmed = useCallback(async (location: { latitude: number; longitude: number }) => {
+  // Emergency handling logic with improved SMS tracking
+  const handleEmergencyConfirmed = useCallback(async (emergencyLocation: { latitude: number; longitude: number }) => {
     const currentUser = user;
     const currentProfile = profile;
     
@@ -39,19 +44,27 @@ const Dashboard = () => {
       return;
     }
 
+    console.log("[EMERGENCY] Creating emergency record...");
+    setIsSendingSMS(true);
+    setSmsError(null);
+    setLastSMSStatus("pending");
+
     const { data: emergency, error } = await supabase
       .from("emergencies")
       .insert({
         user_id: currentUser.id,
-        latitude: location.latitude,
-        longitude: location.longitude,
+        latitude: emergencyLocation.latitude,
+        longitude: emergencyLocation.longitude,
         status: "active",
       })
       .select()
       .single();
 
     if (error) {
-      console.error("Error recording emergency:", error);
+      console.error("[EMERGENCY] Error recording emergency:", error);
+      setIsSendingSMS(false);
+      setLastSMSStatus("failed");
+      setSmsError("Failed to record emergency");
       toast({
         title: "Error",
         description: "Failed to record emergency",
@@ -59,6 +72,8 @@ const Dashboard = () => {
       });
       return;
     }
+
+    console.log("[EMERGENCY] Emergency created:", emergency.id);
 
     // Get ALL guardians
     const { data: guardians } = await supabase
@@ -73,68 +88,98 @@ const Dashboard = () => {
       .eq("user_id", currentUser.id)
       .single();
 
-    // Call backend functions to send notifications
-    const notificationPromises: Promise<any>[] = [];
+    // Send SMS notification using the SMS service
+    const guardianList = (guardians || []).map((g: any) => ({
+      name: g.name,
+      phone: g.contact_number,
+    }));
 
-    // SMS notification to ALL guardians
-    const guardianPhones = (guardians || [])
-      .map((g: any) => String(g.contact_number || "").trim())
-      .filter(Boolean);
+    if (guardianList.length > 0) {
+      console.log("[SMS] Sending emergency SMS to", guardianList.length, "guardian(s)");
+      
+      const smsResult = await sendEmergencySMS({
+        emergencyId: emergency.id,
+        userPhone: currentProfile.phone,
+        userName: currentProfile.name,
+        location: emergencyLocation,
+        guardians: guardianList,
+        userAge: currentProfile.age,
+        userGender: currentProfile.gender,
+        vehicleNumber: currentProfile.vehicle_number,
+        bloodGroup: medicalInfo?.blood_group,
+        medicalHistory: medicalInfo?.medical_history,
+        profilePhotoUrl: currentProfile.profile_photo_url,
+        residentialAddress: currentProfile.address,
+      });
 
-    if (guardianPhones.length > 0) {
-      notificationPromises.push(
-        supabase.functions.invoke("notify-emergency", {
-          body: {
-            emergencyId: emergency.id,
-            userPhone: currentProfile.phone,
-            guardianPhones,
-            guardians: (guardians || []).map((g: any) => ({
-              name: g.name,
-              phone: g.contact_number,
-            })),
-            userName: currentProfile.name,
-            location,
-            userAge: currentProfile.age,
-            userGender: currentProfile.gender,
-            vehicleNumber: currentProfile.vehicle_number,
-            bloodGroup: medicalInfo?.blood_group,
-            medicalHistory: medicalInfo?.medical_history,
-            profilePhotoUrl: currentProfile.profile_photo_url,
-            residentialAddress: currentProfile.address,
-          },
-        })
-      );
+      console.log("[SMS] SMS result:", smsResult);
+      setLastSMSStatus(smsResult.status);
+      
+      if (!smsResult.success && smsResult.error) {
+        setSmsError(smsResult.error);
+      }
+
+      // Show appropriate toast based on SMS status
+      if (smsResult.status === "sent") {
+        toast({
+          title: "🚨 Emergency Recorded",
+          description: `Emergency services and ${guardianList.length} guardian(s) notified via SMS`,
+        });
+      } else if (smsResult.status === "partial") {
+        toast({
+          title: "⚠️ Partial Notification",
+          description: `Some SMS notifications failed. ${smsResult.summary?.sent || 0} of ${smsResult.summary?.total || 0} sent.`,
+          variant: "destructive",
+        });
+      } else if (smsResult.status === "simulated") {
+        toast({
+          title: "🔧 DEV Mode",
+          description: "Emergency recorded. SMS simulated (not sent).",
+        });
+      } else if (smsResult.status === "not_configured") {
+        toast({
+          title: "⚙️ SMS Not Configured",
+          description: "Emergency recorded. SMS not configured - Twilio credentials missing.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "⚠️ SMS Failed",
+          description: smsResult.error || "Failed to send SMS notifications. Emergency still recorded.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      console.log("[SMS] No guardians configured, skipping SMS");
+      setLastSMSStatus("not_configured");
+      toast({
+        title: "🚨 Emergency Recorded",
+        description: "No guardians configured. Add guardians in Settings to receive SMS alerts.",
+        variant: "destructive",
+      });
     }
 
-    // Push notification to hospitals and ambulances
-    notificationPromises.push(
-      supabase.functions.invoke("send-push-notification", {
+    // Push notification to hospitals and ambulances (separate from SMS)
+    try {
+      await supabase.functions.invoke("send-push-notification", {
         body: {
           emergencyId: emergency.id,
           title: "🚨 EMERGENCY ALERT",
-          body: `Emergency reported by ${currentProfile.name}. Location: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+          body: `Emergency reported by ${currentProfile.name}. Location: ${emergencyLocation.latitude.toFixed(4)}, ${emergencyLocation.longitude.toFixed(4)}`,
           data: {
             type: "emergency",
-            lat: String(location.latitude),
-            lng: String(location.longitude),
+            lat: String(emergencyLocation.latitude),
+            lng: String(emergencyLocation.longitude),
           },
           targetRoles: ["hospital", "ambulance"],
         },
-      })
-    );
+      });
+      console.log("[EMERGENCY] Push notifications sent");
+    } catch (pushErr) {
+      console.error("[EMERGENCY] Push notification error:", pushErr);
+    }
 
-    // Execute all notifications in parallel
-    const results = await Promise.allSettled(notificationPromises);
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(`Notification ${index} failed:`, result.reason);
-      }
-    });
-
-    toast({
-      title: "🚨 Emergency Recorded",
-      description: "Emergency services and guardians have been notified",
-    });
+    setIsSendingSMS(false);
   }, [user, profile, toast]);
 
   // Register emergency handler with global context
@@ -372,26 +417,54 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Manual Emergency */}
+        {/* Manual Emergency with SMS Status */}
         <Card className="border-2 border-emergency">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-emergency">
-              <AlertCircle className="w-5 h-5" />
-              Manual Emergency
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emergency">
+                <AlertCircle className="w-5 h-5" />
+                Manual Emergency
+              </div>
+              {lastSMSStatus && (
+                <SMSStatusBadge status={lastSMSStatus} />
+              )}
             </CardTitle>
             <CardDescription>
               Press if you need immediate help
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <Button
               onClick={triggerSOS}
               size="lg"
               className="w-full bg-gradient-emergency shadow-emergency"
+              disabled={isSendingSMS}
             >
-              <AlertCircle className="mr-2 w-5 h-5" />
-              EMERGENCY
+              {isSendingSMS ? (
+                <>
+                  <RefreshCw className="mr-2 w-5 h-5 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="mr-2 w-5 h-5" />
+                  EMERGENCY
+                </>
+              )}
             </Button>
+            
+            {/* SMS Error Banner */}
+            {smsError && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <MessageSquare className="w-4 h-4 text-destructive mt-0.5" />
+                  <div>
+                    <p className="font-medium text-destructive">SMS Notification Issue</p>
+                    <p className="text-muted-foreground">{smsError}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
