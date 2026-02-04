@@ -115,7 +115,28 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
-  body {
+  html, body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    overflow-y: auto;
+    width: 100%;
+    max-width: 100vw;
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent unwanted drag/scroll on web dashboards */
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* Lock viewport for fixed-height dashboard pages */
+  .viewport-lock {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
   }
 }
