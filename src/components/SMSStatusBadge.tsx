@@ -5,7 +5,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { SMSStatus, getSMSStatusLabel, getSMSStatusVariant } from "@/utils/smsService";
-import { MessageSquare, AlertCircle, CheckCircle, Clock, Settings, Wrench } from "lucide-react";
+import { MessageSquare, AlertCircle, CheckCircle, Clock, Settings, Wrench, RefreshCw } from "lucide-react";
 
 interface SMSStatusBadgeProps {
   status: SMSStatus;
@@ -27,6 +27,8 @@ const StatusIcon = ({ status }: { status: SMSStatus }) => {
       return <Settings className={iconClass} />;
     case "simulated":
       return <Wrench className={iconClass} />;
+    case "retrying":
+      return <RefreshCw className={`${iconClass} animate-spin`} />;
     case "pending":
     default:
       return <Clock className={iconClass} />;

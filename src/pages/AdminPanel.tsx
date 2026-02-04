@@ -6,10 +6,24 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Hospital, Ambulance, Trash2, Activity, Users, AlertTriangle, CheckCircle, BarChart3, Shield } from "lucide-react";
+import { LogOut, Hospital, Ambulance, Trash2, Activity, Users, AlertTriangle, CheckCircle, BarChart3, Shield, Clock, MessageSquare, MapPin } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SMSStatusBadge } from "@/components/SMSStatusBadge";
+
+interface Emergency {
+  id: string;
+  user_id: string;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+  notified_at: string | null;
+  guardian_notified: boolean;
+  accepted_by_hospital: string | null;
+  dispatched_to_ambulance: string | null;
+}
 
 interface Stats {
   totalEmergencies: number;
@@ -23,6 +37,7 @@ interface Stats {
 const AdminPanel = () => {
   const [hospitals, setHospitals] = useState<any[]>([]);
   const [ambulances, setAmbulances] = useState<any[]>([]);
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [stats, setStats] = useState<Stats>({
     totalEmergencies: 0,
     activeEmergencies: 0,
@@ -32,6 +47,7 @@ const AdminPanel = () => {
     totalUsers: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [loadingEmergencies, setLoadingEmergencies] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -40,6 +56,7 @@ const AdminPanel = () => {
     console.log("[ADMIN] Initializing admin panel...");
     fetchData();
     fetchStats();
+    fetchEmergencies();
   }, []);
 
   const fetchStats = async () => {
@@ -76,6 +93,32 @@ const AdminPanel = () => {
       console.log("[ADMIN] Stats loaded successfully");
     } catch (error: any) {
       console.error("[ADMIN] Exception fetching stats:", error?.message || error);
+    }
+  };
+
+  const fetchEmergencies = async () => {
+    setLoadingEmergencies(true);
+    try {
+      console.log("[ADMIN] Fetching emergencies...");
+      
+      // Fetch emergencies (NO patient medical/guardian data - privacy)
+      const { data: emergencyData, error: emergencyError } = await supabase
+        .from("emergencies")
+        .select("id, user_id, status, latitude, longitude, created_at, notified_at, guardian_notified, accepted_by_hospital, dispatched_to_ambulance")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (emergencyError) {
+        console.warn("[ADMIN] Error fetching emergencies:", emergencyError.message);
+      }
+
+      setEmergencies(emergencyData || []);
+      console.log("[ADMIN] Emergencies loaded:", emergencyData?.length || 0);
+    } catch (error: any) {
+      console.error("[ADMIN] Exception fetching emergencies:", error?.message || error);
+      setEmergencies([]);
+    } finally {
+      setLoadingEmergencies(false);
     }
   };
 
@@ -363,8 +406,12 @@ const AdminPanel = () => {
         </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="hospitals" className="space-y-6">
+        <Tabs defaultValue="emergencies" className="space-y-6">
           <TabsList className="bg-slate-800/50 border border-slate-700">
+            <TabsTrigger value="emergencies" className="data-[state=active]:bg-slate-700">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              Emergencies
+            </TabsTrigger>
             <TabsTrigger value="hospitals" className="data-[state=active]:bg-slate-700">
               <Hospital className="w-4 h-4 mr-2" />
               Hospitals
@@ -378,6 +425,116 @@ const AdminPanel = () => {
               Add New
             </TabsTrigger>
           </TabsList>
+
+          {/* Emergency History Tab */}
+          <TabsContent value="emergencies">
+            <Card className="bg-slate-800/50 border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-400" />
+                  Emergency History
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  View emergency events and SMS notification status (patient details hidden for privacy)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingEmergencies ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                  </div>
+                ) : emergencies.length === 0 ? (
+                  <p className="text-slate-500 text-center py-8">No emergencies recorded yet</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700">
+                        <TableHead className="text-slate-300">Time</TableHead>
+                        <TableHead className="text-slate-300">Status</TableHead>
+                        <TableHead className="text-slate-300">Location</TableHead>
+                        <TableHead className="text-slate-300">SMS Status</TableHead>
+                        <TableHead className="text-slate-300">Hospital</TableHead>
+                        <TableHead className="text-slate-300">Ambulance</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {emergencies.map((emergency) => (
+                        <TableRow key={emergency.id} className="border-slate-700">
+                          <TableCell className="text-slate-300">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span className="text-xs">
+                                {new Date(emergency.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                emergency.status === "active" ? "destructive" :
+                                emergency.status === "resolved" ? "default" :
+                                "secondary"
+                              }
+                              className="text-xs"
+                            >
+                              {emergency.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-slate-400">
+                            {emergency.latitude && emergency.longitude ? (
+                              <div className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                <span className="font-mono text-xs">
+                                  {emergency.latitude.toFixed(4)}, {emergency.longitude.toFixed(4)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500">N/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <MessageSquare className="w-3 h-3 text-slate-400" />
+                              <SMSStatusBadge
+                                status={
+                                  emergency.guardian_notified ? "sent" :
+                                  emergency.notified_at ? "partial" :
+                                  "pending"
+                                }
+                              />
+                            </div>
+                            {emergency.notified_at && (
+                              <span className="text-xs text-slate-500 block mt-1">
+                                {new Date(emergency.notified_at).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-slate-400 text-xs">
+                            {emergency.accepted_by_hospital ? (
+                              <Badge variant="outline" className="text-green-400 border-green-400/30">
+                                Accepted
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-500">Pending</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-slate-400 text-xs">
+                            {emergency.dispatched_to_ambulance ? (
+                              <Badge variant="outline" className="text-orange-400 border-orange-400/30">
+                                Dispatched
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-500">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Hospitals Tab */}
           <TabsContent value="hospitals">
