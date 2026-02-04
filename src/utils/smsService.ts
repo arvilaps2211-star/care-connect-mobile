@@ -1,11 +1,12 @@
 /**
  * SMS Service Utilities
- * Handles SMS sending, status tracking, and DEV mode simulation
+ * Handles SMS sending, status tracking, retry logic, and DEV mode simulation
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { validateAndFormatPhone } from "@/utils/phoneValidation";
 
-export type SMSStatus = "pending" | "sent" | "partial" | "failed" | "not_configured" | "simulated";
+export type SMSStatus = "pending" | "sent" | "partial" | "failed" | "not_configured" | "simulated" | "retrying";
 
 export interface SMSResult {
   to: string;
@@ -16,6 +17,7 @@ export interface SMSResult {
   twilioStatus?: string;
   errorCode?: string;
   errorMessage?: string;
+  retried?: boolean;
 }
 
 export interface SMSSendResponse {
@@ -28,10 +30,16 @@ export interface SMSSendResponse {
     sent: number;
     failed: number;
     skipped: number;
+    retried: number;
   };
   error?: string;
   simulated?: boolean;
+  timestamp?: string;
 }
+
+// Configuration
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 2000;
 
 // Check if we're in development/simulation mode
 const isDevMode = (): boolean => {
@@ -54,10 +62,22 @@ export async function sendEmergencySMS(params: {
   medicalHistory?: string;
   profilePhotoUrl?: string;
   residentialAddress?: string;
-}): Promise<SMSSendResponse> {
-  console.log("[SMS] Initiating emergency SMS notification...");
+}, retryAttempt: number = 0): Promise<SMSSendResponse> {
+  const isRetry = retryAttempt > 0;
+  console.log(`[SMS] ${isRetry ? "RETRY #" + retryAttempt : "Initiating"} emergency SMS notification...`);
   console.log("[SMS] Emergency ID:", params.emergencyId);
   console.log("[SMS] Guardians count:", params.guardians.length);
+
+  // Validate guardian phone numbers before sending
+  const validatedGuardians = params.guardians.map(g => ({
+    ...g,
+    validation: validateAndFormatPhone(g.phone),
+  }));
+
+  const invalidCount = validatedGuardians.filter(g => !g.validation.isValid).length;
+  if (invalidCount > 0) {
+    console.warn(`[SMS] ${invalidCount} guardian(s) have invalid phone numbers`);
+  }
 
   // In DEV mode without real credentials, simulate
   if (isDevMode()) {
@@ -104,20 +124,44 @@ export async function sendEmergencySMS(params: {
 
     // Parse response status
     const status: SMSStatus = parseStatus(data?.guardianSmsStatus || data?.smsStatus);
-    
-    return {
+    const retriedCount = data?.results?.filter((r: any) => r.retried)?.length || 0;
+
+    const response: SMSSendResponse = {
       success: data?.success ?? false,
       status,
       results: data?.results || [],
       mapsLink: data?.mapsLink,
-      summary: data?.summary,
+      summary: {
+        total: data?.summary?.total || 0,
+        sent: data?.summary?.sent || 0,
+        failed: data?.summary?.failed || 0,
+        skipped: data?.summary?.skipped || 0,
+        retried: retriedCount,
+      },
+      timestamp: new Date().toISOString(),
     };
+
+    // Retry logic: if failed and haven't exceeded retries, try again
+    if (!response.success && retryAttempt < MAX_RETRIES) {
+      console.log(`[SMS] Scheduling retry in ${RETRY_DELAY_MS}ms...`);
+      await delay(RETRY_DELAY_MS);
+      return sendEmergencySMS(params, retryAttempt + 1);
+    }
+
+    return response;
   } catch (err: any) {
     console.error("[SMS] Exception during send:", err);
     
+    // Retry on exception if haven't exceeded retries
+    if (retryAttempt < MAX_RETRIES) {
+      console.log(`[SMS] Exception - scheduling retry in ${RETRY_DELAY_MS}ms...`);
+      await delay(RETRY_DELAY_MS);
+      return sendEmergencySMS(params, retryAttempt + 1);
+    }
+    
     // DEV mode simulation fallback
     if (isDevMode()) {
-      console.log("[SMS] DEV MODE – simulated send (exception)");
+      console.log("[SMS] DEV MODE – simulated send (exception, max retries reached)");
       return simulateSMSSend(params.guardians, params.location);
     }
     
@@ -126,8 +170,16 @@ export async function sendEmergencySMS(params: {
       status: "failed",
       results: [],
       error: err?.message || "Unknown error",
+      timestamp: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * Delay utility for retry logic
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -329,8 +381,10 @@ function simulateSMSSend(
       sent: guardians.length,
       failed: 0,
       skipped: 0,
+      retried: 0,
     },
     simulated: true,
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -346,9 +400,11 @@ export function getSMSStatusLabel(status: SMSStatus): string {
     case "failed":
       return "✗ SMS Failed";
     case "not_configured":
-      return "⚙ SMS Not Configured";
+      return "⚙ Not Configured";
     case "simulated":
       return "🔧 DEV Simulated";
+    case "retrying":
+      return "↻ Retrying...";
     case "pending":
     default:
       return "⏳ Pending";
@@ -363,6 +419,7 @@ export function getSMSStatusVariant(status: SMSStatus): "default" | "secondary" 
     case "sent":
       return "default";
     case "partial":
+    case "retrying":
       return "secondary";
     case "failed":
       return "destructive";
