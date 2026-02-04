@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { isNativePlatform } from "@/utils/capacitor";
 
 export type ImpactLevel = "normal" | "drop" | "accident";
 
@@ -105,6 +106,13 @@ export const useAccidentDetection = ({
   }, [classifyImpact, cooldownMs, onAccident, onDrop]);
 
   useEffect(() => {
+    // CRITICAL: Block accelerometer on web - only run on native mobile
+    if (!isNativePlatform()) {
+      console.log("[AccidentDetection] WEB MODE - accelerometer disabled");
+      setIsActive(false);
+      return;
+    }
+
     if (!enabled) {
       setIsActive(false);
       gForceHistory.current = []; // Reset history when disabled
@@ -114,7 +122,7 @@ export const useAccidentDetection = ({
     const startListening = () => {
       window.addEventListener("devicemotion", handleMotion);
       setIsActive(true);
-      console.log("[AccidentDetection] Started monitoring with thresholds:", THRESHOLDS);
+      console.log("[AccidentDetection] MOBILE - Started monitoring with thresholds:", THRESHOLDS);
     };
 
     // Request permission for iOS 13+
@@ -140,7 +148,7 @@ export const useAccidentDetection = ({
           });
         });
     } else {
-      // Non-iOS or older iOS
+      // Non-iOS or older iOS native
       startListening();
     }
 

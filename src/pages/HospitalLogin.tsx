@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Activity, Lock, Mail, AlertCircle, Building2, Phone, MapPin, Upload, FileCheck, Loader2, Monitor } from "lucide-react";
+import { Activity, Lock, Mail, AlertCircle, Building2, Phone, MapPin, Upload, FileCheck, Loader2 } from "lucide-react";
 
 const HospitalLogin = () => {
   const [activeTab, setActiveTab] = useState("login");
@@ -201,16 +201,8 @@ const HospitalLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 md:p-8">
+    <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 md:p-8 overflow-x-hidden overflow-y-auto">
       <div className="w-full max-w-lg">
-        {/* Desktop Badge */}
-        <div className="text-center mb-4">
-          <div className="inline-flex items-center gap-2 bg-slate-800/80 border border-slate-700 px-4 py-2 rounded-full">
-            <Monitor className="w-4 h-4 text-slate-400" />
-            <span className="text-slate-400 text-sm font-medium">Desktop Portal</span>
-          </div>
-        </div>
-
         {/* Logo & Branding */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-2xl mb-4">
