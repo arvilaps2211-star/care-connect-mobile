@@ -97,11 +97,19 @@ const Dashboard = () => {
     if (guardianList.length > 0) {
       console.log("[SMS] Sending emergency SMS to", guardianList.length, "guardian(s)");
       
+      // Determine location source for logging/debugging
+      const locationSource = emergencyLocation.latitude !== 0 && emergencyLocation.longitude !== 0
+        ? (status === "granted" ? "gps" : "fallback")
+        : "unavailable";
+      
+      console.log("[GPS] Location source for SMS:", locationSource);
+
       const smsResult = await sendEmergencySMS({
         emergencyId: emergency.id,
         userPhone: currentProfile.phone,
         userName: currentProfile.name,
         location: emergencyLocation,
+        locationSource,
         guardians: guardianList,
         userAge: currentProfile.age,
         userGender: currentProfile.gender,
