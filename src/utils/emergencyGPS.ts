@@ -6,6 +6,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
+import { gpsDiag } from "@/utils/safetyDiagnostics";
 
 export interface EmergencyLocation {
   latitude: number;
@@ -59,11 +60,11 @@ export async function getEmergencyLocation(
   fallbackLocation?: { latitude: number; longitude: number } | null,
   timeoutMs: number = EMERGENCY_GPS_TIMEOUT_MS
 ): Promise<EmergencyLocation> {
-  console.log("[GPS] Fetching emergency location...");
+  gpsDiag.acquiring();
 
   // WEB PLATFORM: Return fallback or unavailable immediately
   if (!isNativeMobile()) {
-    console.log("[GPS] Web platform detected - using browser geolocation");
+    gpsDiag.webBlocked();
     return getBrowserLocation(fallbackLocation, timeoutMs);
   }
 
@@ -71,19 +72,17 @@ export async function getEmergencyLocation(
   try {
     // Check permission status first
     const permStatus = await Geolocation.checkPermissions();
-    console.log("[GPS] Permission status:", permStatus);
 
     if (permStatus.location === "denied") {
-      console.warn("[GPS] Permission denied - returning fallback");
+      gpsDiag.denied();
       return createFallbackLocation(fallbackLocation);
     }
 
     // Request permission if needed
     if (permStatus.location === "prompt" || permStatus.location === "prompt-with-rationale") {
-      console.log("[GPS] Requesting permission...");
       const request = await Geolocation.requestPermissions();
       if (request.location !== "granted") {
-        console.warn("[GPS] Permission not granted - returning fallback");
+        gpsDiag.denied();
         return createFallbackLocation(fallbackLocation);
       }
     }
@@ -100,11 +99,7 @@ export async function getEmergencyLocation(
       ),
     ]);
 
-    console.log("[GPS] Position acquired:", {
-      lat: position.coords.latitude.toFixed(6),
-      lng: position.coords.longitude.toFixed(6),
-      accuracy: position.coords.accuracy,
-    });
+    gpsDiag.acquired(position.coords.accuracy);
 
     return {
       latitude: position.coords.latitude,
@@ -123,7 +118,12 @@ export async function getEmergencyLocation(
       }),
     };
   } catch (error: any) {
-    console.error("[GPS] Error fetching location:", error?.message || error);
+    const message = error?.message || "Unknown error";
+    if (message.includes("timeout")) {
+      gpsDiag.timeout();
+    } else {
+      gpsDiag.unavailable();
+    }
     return createFallbackLocation(fallbackLocation);
   }
 }
@@ -136,20 +136,20 @@ async function getBrowserLocation(
   timeoutMs: number = EMERGENCY_GPS_TIMEOUT_MS
 ): Promise<EmergencyLocation> {
   if (!navigator.geolocation) {
-    console.warn("[GPS] Browser geolocation not supported");
+    gpsDiag.unavailable();
     return createFallbackLocation(fallbackLocation);
   }
 
   return new Promise((resolve) => {
     const timeoutId = setTimeout(() => {
-      console.warn("[GPS] Browser geolocation timeout");
+      gpsDiag.timeout();
       resolve(createFallbackLocation(fallbackLocation));
     }, timeoutMs);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         clearTimeout(timeoutId);
-        console.log("[GPS] Browser position acquired");
+        gpsDiag.acquired(position.coords.accuracy);
         
         const result: EmergencyLocation = {
           latitude: position.coords.latitude,
@@ -165,7 +165,11 @@ async function getBrowserLocation(
       },
       (error) => {
         clearTimeout(timeoutId);
-        console.warn("[GPS] Browser geolocation error:", error.message);
+        if (error.code === error.PERMISSION_DENIED) {
+          gpsDiag.denied();
+        } else {
+          gpsDiag.unavailable();
+        }
         resolve(createFallbackLocation(fallbackLocation));
       },
       {
@@ -184,7 +188,7 @@ function createFallbackLocation(
   fallbackCoords?: { latitude: number; longitude: number } | null
 ): EmergencyLocation {
   if (fallbackCoords && fallbackCoords.latitude && fallbackCoords.longitude) {
-    console.log("[GPS] Using fallback/cached location");
+    gpsDiag.usingFallback();
     return {
       latitude: fallbackCoords.latitude,
       longitude: fallbackCoords.longitude,
@@ -194,7 +198,7 @@ function createFallbackLocation(
     };
   }
 
-  console.log("[GPS] No location available");
+  gpsDiag.unavailable();
   return {
     latitude: 0,
     longitude: 0,
