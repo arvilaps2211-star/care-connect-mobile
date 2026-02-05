@@ -11,7 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2, Camera } from "lucide-react";
+import ProfileImageCapture from "@/components/ProfileImageCapture";
 
 interface Guardian {
   id?: string;
@@ -40,6 +41,7 @@ const Settings = () => {
   const [gender, setGender] = useState("");
   const [address, setAddress] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
 
   // Medical Info
   const [bloodGroup, setBloodGroup] = useState("");
@@ -98,6 +100,7 @@ const Settings = () => {
       setGender(profile.gender || "");
       setAddress(profile.address || "");
       setVehicleNumber(profile.vehicle_number || "");
+      setProfilePhotoUrl(profile.profile_photo_url || null);
     }
 
     // Load medical info
@@ -436,6 +439,21 @@ const Settings = () => {
             <SheetDescription>Update your profile details</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 mt-6">
+            {/* Profile Photo */}
+            {userId && (
+              <div className="flex flex-col items-center space-y-2">
+                <Label>Profile Photo</Label>
+                <ProfileImageCapture
+                  userId={userId}
+                  currentImageUrl={profilePhotoUrl}
+                  userName={name}
+                  onImageUpdated={(url) => setProfilePhotoUrl(url)}
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Helps hospitals identify you faster
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Name</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />

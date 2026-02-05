@@ -5,8 +5,10 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import { validateAndFormatPhone } from "@/utils/phoneValidation";
+import { wasSMSSentRecently, markSMSPending, markSMSSent, markSMSFailed } from "@/utils/smsQueue";
+import { smsDiag } from "@/utils/safetyDiagnostics";
 
-export type SMSStatus = "pending" | "sent" | "partial" | "failed" | "not_configured" | "simulated" | "retrying";
+export type SMSStatus = "pending" | "sent" | "partial" | "failed" | "not_configured" | "simulated" | "retrying" | "duplicate";
 
 export interface SMSResult {
   to: string;
@@ -66,21 +68,30 @@ export async function sendEmergencySMS(params: {
   residentialAddress?: string;
 }, retryAttempt: number = 0): Promise<SMSSendResponse> {
   const isRetry = retryAttempt > 0;
+  
+  // Duplicate prevention check (skip on retry)
+  if (!isRetry && wasSMSSentRecently(params.emergencyId, "emergency")) {
+    console.log("[SMS] Duplicate prevented - emergency SMS already sent recently");
+    return {
+      success: true,
+      status: "duplicate",
+      results: [],
+      error: "SMS already sent for this emergency",
+    };
+  }
+
+  smsDiag.sending(params.guardians.length);
   console.log(`[SMS] ${isRetry ? "RETRY #" + retryAttempt : "Initiating"} emergency SMS notification...`);
   console.log("[SMS] Emergency ID:", params.emergencyId);
-  console.log("[SMS] Guardians count:", params.guardians.length);
-  console.log("[SMS] Location source:", params.locationSource || "unknown");
+
+  // Mark as pending to prevent concurrent sends
+  if (!isRetry) {
+    markSMSPending(params.emergencyId, "emergency");
+  }
 
   // Check location availability - DO NOT BLOCK if unavailable
   const hasLocation = params.location && params.location.latitude !== 0 && params.location.longitude !== 0;
-  if (!hasLocation) {
-    console.warn("[SMS] GPS location unavailable - SMS will be sent without location link");
-  } else {
-    console.log("[SMS] GPS coordinates available:", {
-      lat: params.location!.latitude.toFixed(4),
-      lng: params.location!.longitude.toFixed(4),
-    });
-  }
+  smsDiag.locationIncluded(hasLocation);
 
   // Validate guardian phone numbers before sending
   const validatedGuardians = params.guardians.map(g => ({
@@ -154,6 +165,15 @@ export async function sendEmergencySMS(params: {
       },
       timestamp: new Date().toISOString(),
     };
+
+    // Mark SMS status for duplicate prevention
+    if (response.success) {
+      markSMSSent(params.emergencyId, "emergency");
+      smsDiag.sent(response.summary?.sent || 0, response.summary?.total || 0);
+    } else {
+      markSMSFailed(params.emergencyId, "emergency");
+      smsDiag.failed(response.error || "Unknown error");
+    }
 
     // Retry logic: if failed and haven't exceeded retries, try again
     if (!response.success && retryAttempt < MAX_RETRIES) {
