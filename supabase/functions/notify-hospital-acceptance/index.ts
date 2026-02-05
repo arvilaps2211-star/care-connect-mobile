@@ -149,9 +149,11 @@ serve(async (req) => {
     const userName = profile?.name || "Your loved one";
     const patientAddress = profile?.address || "Address not available";
 
-    // Get address from hospital location if not provided
+    // Get hospital location and address
     let finalHospitalAddress = hospitalAddress;
-    if (!finalHospitalAddress && hospitalId) {
+    let hospitalMapsLink = "";
+    
+    if (!finalHospitalAddress || !hospitalMapsLink) {
       const { data: hospital } = await supabase
         .from("hospitals")
         .select("latitude, longitude")
@@ -159,10 +161,16 @@ serve(async (req) => {
         .single();
 
       if (hospital) {
-        finalHospitalAddress = await getAddressFromCoordinates(
-          hospital.latitude,
-          hospital.longitude
-        );
+        // Generate Google Maps link for hospital
+        hospitalMapsLink = `https://maps.google.com/?q=${hospital.latitude},${hospital.longitude}`;
+        
+        // Get address if not provided
+        if (!finalHospitalAddress) {
+          finalHospitalAddress = await getAddressFromCoordinates(
+            hospital.latitude,
+            hospital.longitude
+          );
+        }
       }
     }
 
@@ -171,8 +179,22 @@ serve(async (req) => {
       ? `https://maps.google.com/?q=${patientLocation.latitude},${patientLocation.longitude}`
       : "";
 
-    // Build SMS message with hospital details
-    const smsMessage = `✅ HOSPITAL UPDATE\n\n${userName} has been accepted by:\n\n🏥 ${hospitalName}\n📍 Hospital: ${finalHospitalAddress || "Address not available"}${hospitalPhone ? `\n📞 ${hospitalPhone}` : ""}\n\n📋 Patient Address: ${patientAddress}${patientMapsLink ? `\n📍 Patient Location: ${patientMapsLink}` : ""}\n\nThe hospital is preparing to dispatch an ambulance.`;
+    // Build clear SMS message with hospital details
+    let smsMessage = `🏥 HOSPITAL UPDATE\n\n`;
+    smsMessage += `${userName} has been accepted by:\n\n`;
+    smsMessage += `🏥 ${hospitalName}\n`;
+    smsMessage += `📍 ${finalHospitalAddress || "Address not available"}\n`;
+    if (hospitalMapsLink) {
+      smsMessage += `🗺️ Hospital: ${hospitalMapsLink}\n`;
+    }
+    if (hospitalPhone) {
+      smsMessage += `📞 ${hospitalPhone}\n`;
+    }
+    smsMessage += `\n📋 Patient Home: ${patientAddress}`;
+    if (patientMapsLink) {
+      smsMessage += `\n📍 Patient Location: ${patientMapsLink}`;
+    }
+    smsMessage += `\n\nThe hospital is preparing to dispatch an ambulance.`;
 
     // Get Twilio credentials
     const twilioAccountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
