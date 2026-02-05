@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { requestAllPermissions, setupPushNotificationListeners } from '@/utils/permissions';
+import { createEmergencyChannel, initializeBackgroundNotifications } from '@/utils/backgroundNotification';
+import { platformDiag, backgroundDiag } from '@/utils/safetyDiagnostics';
 
 interface AppInitState {
   initialized: boolean;
@@ -23,22 +25,34 @@ export const useAppInitialization = () => {
 
   useEffect(() => {
     const initializeApp = async () => {
-      console.log('[App] Initializing on platform:', Capacitor.getPlatform());
+      const platform = Capacitor.getPlatform();
+      platformDiag.detected(platform);
       
       // Only request permissions on native platforms
       if (Capacitor.isNativePlatform()) {
+        platformDiag.nativeGuardActive();
+        
         // Setup push notification listeners first
         setupPushNotificationListeners();
+        
+        // Create emergency notification channel (Android)
+        await createEmergencyChannel();
         
         // Request all permissions
         const permissions = await requestAllPermissions();
         
+        // Initialize background notification handlers
+        // Note: Actual callbacks are registered in the SOS context
+        backgroundDiag.active();
+        
         setState({
           initialized: true,
           permissions,
-          platform: Capacitor.getPlatform(),
+          platform,
         });
       } else {
+        platformDiag.webGuardActive();
+        
         // Web platform - no need to request permissions upfront
         setState({
           initialized: true,
