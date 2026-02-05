@@ -48,12 +48,14 @@ const isDevMode = (): boolean => {
 
 /**
  * Send emergency SMS notification to guardians
+ * Supports GPS location with fallback handling
  */
 export async function sendEmergencySMS(params: {
   emergencyId: string;
   userPhone: string;
   userName: string;
-  location: { latitude: number; longitude: number };
+  location: { latitude: number; longitude: number } | null;
+  locationSource?: "gps" | "fallback" | "unavailable";
   guardians: Array<{ name: string; phone: string }>;
   userAge?: number;
   userGender?: string;
@@ -67,6 +69,18 @@ export async function sendEmergencySMS(params: {
   console.log(`[SMS] ${isRetry ? "RETRY #" + retryAttempt : "Initiating"} emergency SMS notification...`);
   console.log("[SMS] Emergency ID:", params.emergencyId);
   console.log("[SMS] Guardians count:", params.guardians.length);
+  console.log("[SMS] Location source:", params.locationSource || "unknown");
+
+  // Check location availability - DO NOT BLOCK if unavailable
+  const hasLocation = params.location && params.location.latitude !== 0 && params.location.longitude !== 0;
+  if (!hasLocation) {
+    console.warn("[SMS] GPS location unavailable - SMS will be sent without location link");
+  } else {
+    console.log("[SMS] GPS coordinates available:", {
+      lat: params.location!.latitude.toFixed(4),
+      lng: params.location!.longitude.toFixed(4),
+    });
+  }
 
   // Validate guardian phone numbers before sending
   const validatedGuardians = params.guardians.map(g => ({
@@ -349,11 +363,11 @@ function parseStatus(status?: string): SMSStatus {
 }
 
 /**
- * DEV mode SMS simulation
+ * DEV mode SMS simulation - handles GPS unavailable case
  */
 function simulateSMSSend(
   guardians: Array<{ name: string; phone: string }>,
-  location: { latitude: number; longitude: number }
+  location: { latitude: number; longitude: number } | null
 ): SMSSendResponse {
   console.log("[SMS] DEV MODE – simulating SMS send to", guardians.length, "guardian(s)");
   
@@ -365,17 +379,22 @@ function simulateSMSSend(
     twilioStatus: "simulated",
   }));
 
+  const hasLocation = location && location.latitude !== 0 && location.longitude !== 0;
+  const mapsLink = hasLocation 
+    ? `https://maps.google.com/?q=${location!.latitude},${location!.longitude}`
+    : null;
+
   console.log("[SMS] DEV MODE – simulated payload:", {
     guardians,
-    location,
-    mapsLink: `https://maps.google.com/?q=${location.latitude},${location.longitude}`,
+    location: hasLocation ? location : "UNAVAILABLE",
+    mapsLink: mapsLink || "GPS unavailable",
   });
 
   return {
     success: true,
     status: "simulated",
     results,
-    mapsLink: `https://maps.google.com/?q=${location.latitude},${location.longitude}`,
+    mapsLink: mapsLink ?? undefined,
     summary: {
       total: guardians.length,
       sent: guardians.length,

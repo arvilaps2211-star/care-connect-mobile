@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type Coordinates = { latitude: number; longitude: number };
+type Coordinates = { latitude: number; longitude: number } | null;
 
 type GuardianInput = {
   name?: string;
@@ -19,6 +19,7 @@ interface EmergencyNotificationRequest {
   userPhone: string;
   userName: string;
   location: Coordinates;
+  locationSource?: "gps" | "fallback" | "unavailable";
 
   // Backwards compat (older clients)
   guardianPhone?: string;
@@ -148,6 +149,7 @@ serve(async (req) => {
       userPhone,
       userName,
       location,
+      locationSource,
       userAge,
       userGender,
       bloodGroup,
@@ -158,14 +160,19 @@ serve(async (req) => {
     console.log("=== EMERGENCY SMS NOTIFICATION ===");
     console.log("Emergency ID:", emergencyId);
     console.log("User:", userName);
+    console.log("Location source:", locationSource || "unknown");
 
-    // Validate location
-    if (!location?.latitude || !location?.longitude) {
-      console.error("Invalid location provided");
-      return new Response(JSON.stringify({ success: false, error: "Invalid location" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate location - ALLOW null/missing location (send SMS without GPS)
+    const hasValidLocation = location && 
+      typeof location.latitude === "number" && 
+      typeof location.longitude === "number" &&
+      location.latitude !== 0 && 
+      location.longitude !== 0;
+
+    if (!hasValidLocation) {
+      console.warn("GPS location unavailable or invalid - SMS will be sent without location link");
+    } else {
+      console.log("Location:", location.latitude.toFixed(6), location.longitude.toFixed(6));
     }
 
     const guardians = normalizeGuardians(payload);
@@ -176,12 +183,18 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get address from coordinates
-    const exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
-    console.log("Resolved address:", exactAddress);
+    // Get address from coordinates (if available)
+    let exactAddress = "Location unavailable";
+    let mapsLink: string | null = null;
 
-    // Standard Google Maps link format (confirmed working on all devices)
-    const mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+    if (hasValidLocation && location) {
+      exactAddress = await getAddressFromCoordinates(location.latitude, location.longitude);
+      mapsLink = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+      console.log("Resolved address:", exactAddress);
+      console.log("Maps link:", mapsLink);
+    } else {
+      console.log("No GPS - skipping address resolution");
+    }
 
     // Format user phone for contact info in SMS
     const { formatted: formattedUserPhone } = formatPhoneNumber(userPhone);
@@ -284,8 +297,14 @@ serve(async (req) => {
         body += `🏠 Home Address:\n${residentialAddress}\n\n`;
       }
 
-      body += `📍 Current Location:\n${exactAddress}\n\n`;
-      body += `🗺️ Maps: ${mapsLink}\n\n`;
+      // Add location info - handle GPS unavailable case
+      if (hasValidLocation && mapsLink) {
+        body += `📍 Current Location:\n${exactAddress}\n\n`;
+        body += `🗺️ Maps: ${mapsLink}\n\n`;
+      } else {
+        body += `📍 Location: Unable to fetch GPS at this moment\n\n`;
+      }
+
       body += `📞 Contact: ${formattedUserPhone || userPhone}`;
 
       try {
