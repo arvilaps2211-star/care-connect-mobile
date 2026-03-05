@@ -112,9 +112,9 @@ export const ProfileImageCapture = ({
       const mimeType = format === "png" ? "image/png" : "image/jpeg";
       const blob = new Blob([byteArray], { type: mimeType });
 
-      // Generate unique filename
-      const fileName = `${userId}-${Date.now()}.${format}`;
-      const filePath = `profiles/${fileName}`;
+      // Generate unique filename - folder must be userId for RLS policy
+      const fileName = `profile-${Date.now()}.${format}`;
+      const filePath = `${userId}/${fileName}`;
 
       // Upload to profile-photos bucket
       const { error: uploadError } = await supabase.storage
