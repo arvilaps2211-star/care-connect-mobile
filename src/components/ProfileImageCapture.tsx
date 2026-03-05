@@ -205,10 +205,10 @@ export const ProfileImageCapture = ({
       reader.onload = () => setPreviewUrl(reader.result as string);
       reader.readAsDataURL(file);
 
-      // Generate unique filename
+      // Generate unique filename - folder must be userId for RLS policy
       const ext = file.name.split(".").pop() || "jpg";
-      const fileName = `${userId}-${Date.now()}.${ext}`;
-      const filePath = `profiles/${fileName}`;
+      const fileName = `profile-${Date.now()}.${ext}`;
+      const filePath = `${userId}/${fileName}`;
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
