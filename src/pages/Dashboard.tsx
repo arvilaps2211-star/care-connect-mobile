@@ -280,9 +280,17 @@ const Dashboard = () => {
       <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-emergency p-2 rounded-full">
-              <Heart className="w-6 h-6 text-white" />
-            </div>
+            {profile.profile_photo_url ? (
+              <img
+                src={profile.profile_photo_url}
+                alt={profile.name}
+                className="w-10 h-10 rounded-full object-cover border-2 border-primary"
+              />
+            ) : (
+              <div className="bg-gradient-emergency p-2 rounded-full">
+                <Heart className="w-6 h-6 text-white" />
+              </div>
+            )}
             <div>
               <h1 className="text-xl font-bold">CareConnect</h1>
               <p className="text-sm text-muted-foreground">Welcome, {profile.name}</p>
