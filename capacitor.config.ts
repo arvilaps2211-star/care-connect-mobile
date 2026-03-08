@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.08e4337778ca4863a93afaf89a5c083e',
+  appId: 'app.lovable.careconnect',
   appName: 'CareConnect',
   webDir: 'dist',
   server: {
