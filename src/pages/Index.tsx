@@ -27,7 +27,7 @@ const Index = () => {
       .from("user_roles")
       .select("role")
       .eq("user_id", session.user.id)
-      .single();
+      .maybeSingle();
 
     if (role) {
       if (role.role === "admin") {

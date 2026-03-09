@@ -5,8 +5,6 @@ const config: CapacitorConfig = {
   appName: 'CareConnect',
   webDir: 'dist',
   server: {
-    url: 'https://08e43377-78ca-4863-a93a-faf89a5c083e.lovableproject.com?forceHideBadge=true',
-    cleartext: true,
     androidScheme: 'https'
   },
   plugins: {
