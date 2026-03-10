@@ -115,7 +115,13 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
-  html, body {
+  html {
+    /* Background fills entire viewport INCLUDING notch/cutout area */
+    background-color: hsl(217 91% 60%); /* --primary: matches Android windowBackground #3b82f6 */
+    @apply text-foreground;
+  }
+
+  body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
     overflow-y: auto;
@@ -124,7 +130,7 @@ All colors MUST be HSL.
     min-height: 100vh;
     min-height: 100dvh;
     -webkit-overflow-scrolling: touch;
-    /* Notch/cutout safe area support */
+    /* Notch/cutout safe area: push content inside, background bleeds behind */
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
