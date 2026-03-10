@@ -1,0 +1,21 @@
+// In android/app/build.gradle, ensure these values:
+// 
+// android {
+//     compileSdk 34
+//     
+//     defaultConfig {
+//         applicationId "app.lovable.careconnect"
+//         minSdk 23
+//         targetSdk 34        // <-- MUST be 34, not 33 or lower!
+//         versionCode 1
+//         versionName "1.0"
+//     }
+//     
+//     compileOptions {
+//         sourceCompatibility JavaVersion.VERSION_17
+//         targetCompatibility JavaVersion.VERSION_17
+//     }
+// }
+//
+// IMPORTANT: targetSdk 34 fixes the "Unsafe app blocked" warning from Play Protect.
+// Google requires targetSdk >= 33 minimum, but 34 is recommended for 2024+.
