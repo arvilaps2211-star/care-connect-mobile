@@ -259,8 +259,9 @@ serve(async (req) => {
     const authHeader = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
     const results: any[] = [];
 
-    // Send SMS to EACH guardian
-    for (const g of guardians) {
+    // Send SMS to EACH guardian (with delay between calls to avoid Twilio rate limits)
+    for (let i = 0; i < guardians.length; i++) {
+      const g = guardians[i];
       const { formatted: to, isValid } = formatPhoneNumber(g.phone);
 
       // Skip invalid phone numbers (don't crash, just log and continue)
@@ -307,62 +308,104 @@ serve(async (req) => {
 
       body += `📞 Contact: ${formattedUserPhone || userPhone}`;
 
-      try {
-        console.log(`Sending SMS to guardian ${g.name || "Unknown"}: ${to}`);
+      // Retry logic per guardian (1 retry on failure)
+      let lastError: any = null;
+      let sent = false;
 
-        const response = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${authHeader}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              To: to,
-              From: twilioPhoneNumber,
-              Body: body,
-            }),
-          }
-        );
-
-        const responseText = await response.text();
-        let twilio: any = null;
+      for (let attempt = 0; attempt < 2 && !sent; attempt++) {
         try {
-          twilio = JSON.parse(responseText);
-        } catch {
-          twilio = { raw: responseText };
+          if (attempt > 0) {
+            console.log(`Retry attempt ${attempt} for ${g.name}: ${to}`);
+            await new Promise(r => setTimeout(r, 1500));
+          }
+
+          console.log(`Sending SMS to guardian ${g.name || "Unknown"}: ${to} (attempt ${attempt + 1})`);
+
+          const response = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Basic ${authHeader}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                To: to,
+                From: twilioPhoneNumber,
+                Body: body,
+              }),
+            }
+          );
+
+          const responseText = await response.text();
+          let twilio: any = null;
+          try {
+            twilio = JSON.parse(responseText);
+          } catch {
+            twilio = { raw: responseText };
+          }
+
+          console.log("Twilio response:", {
+            ok: response.ok,
+            status: response.status,
+            to,
+            guardianName: g.name,
+            sid: twilio?.sid,
+            twilioStatus: twilio?.status,
+            errorCode: twilio?.code ?? twilio?.error_code,
+          });
+
+          if (response.ok) {
+            results.push({
+              to,
+              guardianName: g.name,
+              success: true,
+              httpStatus: response.status,
+              sid: twilio?.sid,
+              twilioStatus: twilio?.status,
+              retried: attempt > 0,
+            });
+            sent = true;
+          } else {
+            // Check if it's a Twilio trial account restriction (21608)
+            const errorCode = twilio?.code ?? twilio?.error_code;
+            if (errorCode === 21608 || errorCode === "21608") {
+              // Unverified number on trial - no point retrying
+              results.push({
+                to,
+                guardianName: g.name,
+                success: false,
+                httpStatus: response.status,
+                errorCode: String(errorCode),
+                errorMessage: "Unverified number (Twilio trial). Verify this number at twilio.com/console/phone-numbers/verified",
+              });
+              sent = true; // Don't retry
+            } else {
+              lastError = {
+                httpStatus: response.status,
+                errorCode,
+                errorMessage: twilio?.message ?? twilio?.error_message,
+              };
+            }
+          }
+        } catch (e: any) {
+          console.error(`Error sending SMS to ${g.name} (attempt ${attempt + 1}):`, e);
+          lastError = { errorMessage: e?.message ?? "Unknown error" };
         }
+      }
 
-        console.log("Twilio response:", {
-          ok: response.ok,
-          status: response.status,
-          to,
-          guardianName: g.name,
-          sid: twilio?.sid,
-          twilioStatus: twilio?.status,
-          errorCode: twilio?.code ?? twilio?.error_code,
-        });
-
-        results.push({
-          to,
-          guardianName: g.name,
-          success: response.ok,
-          httpStatus: response.status,
-          sid: twilio?.sid,
-          twilioStatus: twilio?.status,
-          errorCode: twilio?.code ?? twilio?.error_code,
-          errorMessage: response.ok ? undefined : (twilio?.message ?? twilio?.error_message),
-        });
-      } catch (e: any) {
-        // Don't let one failure stop other guardians from being notified
-        console.error(`Error sending SMS to ${g.name}:`, e);
+      if (!sent && lastError) {
         results.push({
           to,
           guardianName: g.name,
           success: false,
-          errorMessage: e?.message ?? "Unknown error",
+          ...lastError,
         });
+      }
+
+      // Delay between recipients to avoid Twilio rate limits
+      if (i < guardians.length - 1) {
+        await new Promise(r => setTimeout(r, 800));
       }
     }
 

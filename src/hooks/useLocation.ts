@@ -68,7 +68,7 @@ export const useLocation = (options: UseLocationOptions = {}): UseLocationResult
   
   const watchIdRef = useRef<string | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /**
    * Request location permissions (Capacitor on native)
