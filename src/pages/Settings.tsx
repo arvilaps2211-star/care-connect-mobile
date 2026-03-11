@@ -11,8 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2, Camera } from "lucide-react";
+import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2, Camera, MapPin, Bug } from "lucide-react";
 import ProfileImageCapture from "@/components/ProfileImageCapture";
+import SMSDiagnostic from "@/components/SMSDiagnostic";
+import LocationDebug from "@/components/LocationDebug";
 
 interface Guardian {
   id?: string;

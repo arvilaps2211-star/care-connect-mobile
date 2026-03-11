@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -19,12 +19,17 @@ const ambulanceIcon = new L.Icon({
   popupAnchor: [0, -40],
 });
 
-// User location icon
-const userLocationIcon = new L.Icon({
-  iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684809.png',
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32],
+// Blue dot icon for user location
+const userDotIcon = new L.DivIcon({
+  className: '',
+  html: `<div style="
+    width:18px;height:18px;border-radius:50%;
+    background:hsl(217,91%,60%);
+    border:3px solid white;
+    box-shadow:0 0 8px rgba(59,130,246,0.6);
+  "></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 // Emergency location icon
@@ -39,8 +44,8 @@ interface Location {
   latitude: number;
   longitude: number;
   label?: string;
-  /** GPS horizontal accuracy in meters (if available) */
   accuracy?: number;
+  heading?: number | null;
 }
 
 interface GPSTrackerProps {
@@ -48,34 +53,38 @@ interface GPSTrackerProps {
   emergencyLocation?: Location;
   showRoute?: boolean;
   height?: string;
-  /** Use user icon instead of ambulance icon for currentLocation */
   useUserIcon?: boolean;
+  /** Show accuracy circle around current location */
+  showAccuracyCircle?: boolean;
 }
 
-// Component to recenter map when location changes
+// Component to smoothly recenter map
 function RecenterMap({ location }: { location: Location }) {
   const map = useMap();
-  
+
   useEffect(() => {
     if (location) {
-      map.setView([location.latitude, location.longitude], 15);
+      map.setView([location.latitude, location.longitude], map.getZoom(), {
+        animate: true,
+        duration: 0.5,
+      });
     }
-  }, [location, map]);
-  
+  }, [location.latitude, location.longitude, map]);
+
   return null;
 }
 
-const GPSTracker = ({ 
-  currentLocation, 
-  emergencyLocation, 
+const GPSTracker = ({
+  currentLocation,
+  emergencyLocation,
   showRoute = false,
   height = "400px",
   useUserIcon = false,
+  showAccuracyCircle = true,
 }: GPSTrackerProps) => {
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]); // Default to India center
-  
-  // Select appropriate icon
-  const currentIcon = useUserIcon ? userLocationIcon : ambulanceIcon;
+  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]);
+
+  const currentIcon = useUserIcon ? userDotIcon : ambulanceIcon;
 
   useEffect(() => {
     if (currentLocation) {
@@ -85,11 +94,13 @@ const GPSTracker = ({
     }
   }, [currentLocation, emergencyLocation]);
 
+  const accuracyRadius = currentLocation?.accuracy ?? 0;
+
   return (
-    <div className="rounded-lg overflow-hidden border border-slate-700" style={{ height }}>
+    <div className="rounded-lg overflow-hidden border border-border" style={{ height }}>
       <MapContainer
         center={mapCenter}
-        zoom={13}
+        zoom={15}
         style={{ height: '100%', width: '100%' }}
         className="z-0"
       >
@@ -97,13 +108,26 @@ const GPSTracker = ({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        
-        {currentLocation && (
-          <RecenterMap location={currentLocation} />
+
+        {currentLocation && <RecenterMap location={currentLocation} />}
+
+        {/* Accuracy circle */}
+        {currentLocation && showAccuracyCircle && accuracyRadius > 0 && (
+          <Circle
+            center={[currentLocation.latitude, currentLocation.longitude]}
+            radius={accuracyRadius}
+            pathOptions={{
+              color: '#3b82f6',
+              fillColor: '#3b82f6',
+              fillOpacity: 0.1,
+              weight: 1,
+            }}
+          />
         )}
-        
+
+        {/* Current location marker */}
         {currentLocation && (
-          <Marker 
+          <Marker
             position={[currentLocation.latitude, currentLocation.longitude]}
             icon={currentIcon}
           >
@@ -120,13 +144,20 @@ const GPSTracker = ({
                     <small>Accuracy: ±{Math.round(currentLocation.accuracy)}m</small>
                   </>
                 )}
+                {currentLocation.heading != null && (
+                  <>
+                    <br />
+                    <small>Heading: {Math.round(currentLocation.heading)}°</small>
+                  </>
+                )}
               </div>
             </Popup>
           </Marker>
         )}
-        
+
+        {/* Emergency location marker */}
         {emergencyLocation && (
-          <Marker 
+          <Marker
             position={[emergencyLocation.latitude, emergencyLocation.longitude]}
             icon={emergencyIcon}
           >
