@@ -431,6 +431,18 @@ const Settings = () => {
             </div>
           </CardHeader>
         </Card>
+
+        {/* Diagnostics Section */}
+        <div className="pt-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
+            <Bug className="h-5 w-5 text-muted-foreground" />
+            Diagnostics
+          </h2>
+          <div className="space-y-4">
+            <SMSDiagnostic />
+            <LocationDebug />
+          </div>
+        </div>
       </div>
 
       {/* Personal Info Sheet */}
