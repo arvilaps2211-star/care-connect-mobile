@@ -15,6 +15,7 @@ import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Tr
 import ProfileImageCapture from "@/components/ProfileImageCapture";
 import SMSDiagnostic from "@/components/SMSDiagnostic";
 import LocationDebug from "@/components/LocationDebug";
+import NotificationTester from "@/components/NotificationTester";
 
 interface Guardian {
   id?: string;
@@ -441,6 +442,7 @@ const Settings = () => {
           <div className="space-y-4">
             <SMSDiagnostic />
             <LocationDebug />
+            <NotificationTester />
           </div>
         </div>
       </div>

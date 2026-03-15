@@ -10,11 +10,24 @@ import {
   Navigation,
   Gauge,
   Clock,
+  Smartphone,
 } from "lucide-react";
 import {
   useRealtimeLocation,
   getAccuracyGrade,
 } from "@/hooks/useRealtimeLocation";
+import { Capacitor } from "@capacitor/core";
+
+const EMULATOR_COORDS = [
+  { lat: 37.421998, lng: -122.084 },
+  { lat: 37.4220936, lng: -122.083922 },
+];
+
+function isEmulatorLocation(lat: number, lng: number): boolean {
+  return EMULATOR_COORDS.some(
+    (c) => Math.abs(lat - c.lat) < 0.002 && Math.abs(lng - c.lng) < 0.002
+  );
+}
 
 const gradeConfig: Record<
   string,
@@ -38,6 +51,11 @@ const LocationDebug = () => {
   } = useRealtimeLocation();
 
   const grade = gradeConfig[accuracyGrade] ?? gradeConfig.poor;
+  const platform = Capacitor.getPlatform();
+  const isNative = Capacitor.isNativePlatform();
+
+  const isEmulator =
+    location && isEmulatorLocation(location.latitude, location.longitude);
 
   return (
     <Card>
@@ -46,9 +64,13 @@ const LocationDebug = () => {
           <MapPin className="h-5 w-5 text-primary" />
           Location Debug Panel
         </CardTitle>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Badge variant={isWatching ? "default" : "outline"}>
             {isWatching ? "Watching" : "Stopped"}
+          </Badge>
+          <Badge variant="outline">
+            <Smartphone className="h-3 w-3 mr-1" />
+            {platform} {isNative ? "(native)" : "(web)"}
           </Badge>
           {accuracy != null && (
             <Badge variant="outline" className={grade.color}>
@@ -58,6 +80,28 @@ const LocationDebug = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Emulator warning */}
+        {isEmulator && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                ⚠️ Emulator Coordinates Detected
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                The coordinates (37.42°N, -122.08°W) are the Android emulator
+                default (Google HQ, California). This is <strong>not</strong> a
+                bug — the emulator doesn't have real GPS hardware.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                <strong>On a real device</strong>, CareConnect will use actual
+                GPS and show your correct location. These emulator coordinates
+                are automatically filtered out during emergencies.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
@@ -82,6 +126,17 @@ const LocationDebug = () => {
                   {location.longitude.toFixed(6)}
                 </p>
               </div>
+            </div>
+
+            {/* Source info */}
+            <div className="p-2 rounded bg-muted/50 text-xs">
+              <span className="text-muted-foreground">Source: </span>
+              <span className="font-medium">
+                {isNative ? "Capacitor GPS" : "Browser Geolocation API"}
+              </span>
+              {isEmulator && (
+                <span className="text-amber-600 ml-2">(emulator default)</span>
+              )}
             </div>
 
             {/* Accuracy bar */}
@@ -150,10 +205,10 @@ const LocationDebug = () => {
                           g === "excellent"
                             ? "bg-emerald-500"
                             : g === "good"
-                            ? "bg-primary"
-                            : g === "fair"
-                            ? "bg-amber-500"
-                            : "bg-destructive"
+                              ? "bg-primary"
+                              : g === "fair"
+                                ? "bg-amber-500"
+                                : "bg-destructive"
                         }`}
                         style={{ height: `${barH}%` }}
                         title={`±${Math.round(h.accuracy)}m`}
