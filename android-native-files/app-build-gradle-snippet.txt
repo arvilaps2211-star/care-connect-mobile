@@ -1,14 +1,16 @@
 // ═══════════════════════════════════════════════════════════════
-// In android/app/build.gradle, ensure these values:
+// In android/app/build.gradle, find the "android {" block and
+// update these values. DO NOT replace the entire file — only
+// change the values shown below.
 // ═══════════════════════════════════════════════════════════════
 //
 // android {
-//     compileSdk 34
+//     compileSdk 34                    // ← change to 34
 //
 //     defaultConfig {
 //         applicationId "app.lovable.careconnect"
-//         minSdk 23
-//         targetSdk 34        // ← MUST be 34 to avoid Play Protect warning
+//         minSdk 23                    // ← change to 23
+//         targetSdk 34                 // ← MUST be 34 (fixes Play Protect warning)
 //         versionCode 1
 //         versionName "1.0"
 //     }
@@ -20,8 +22,7 @@
 // }
 //
 // ═══════════════════════════════════════════════════════════════
-// WHY targetSdk 34?
-//   • Google requires targetSdk >= 33 minimum
-//   • targetSdk 34 fixes "Unsafe app blocked" from Play Protect
-//   • Required for POST_NOTIFICATIONS and READ_MEDIA_IMAGES
+// GRADLE JDK SETUP (in Android Studio):
+//   File → Settings → Build Tools → Gradle → Gradle JDK → jbr-17
+//   (or Eclipse Temurin 17)
 // ═══════════════════════════════════════════════════════════════
