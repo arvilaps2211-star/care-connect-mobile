@@ -442,6 +442,7 @@ const Settings = () => {
           <div className="space-y-4">
             <SMSDiagnostic />
             <LocationDebug />
+            <NotificationTester />
           </div>
         </div>
       </div>
