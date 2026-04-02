@@ -34,9 +34,7 @@ const GlobalSOSWrapper = () => {
   const { showSOS, dismissSOS, onEmergencyConfirmed, triggerSOS } = useSOSContext();
   const { toast } = useToast();
 
-  // Initialize background notification handlers - ONLY for mobile
   useEffect(() => {
-    // Skip mobile-specific initialization in web dev mode
     if (isWebDevMode) {
       console.log('[App] Web dev mode - skipping mobile SOS initialization');
       return;
@@ -46,22 +44,13 @@ const GlobalSOSWrapper = () => {
     initializeBackgroundNotifications({
       onSafe: () => {
         dismissSOS();
-        toast({
-          title: "Glad you're safe!",
-          description: "The alert has been dismissed.",
-        });
+        toast({ title: "Glad you're safe!", description: "The alert has been dismissed." });
       },
-      onSOS: () => {
-        // Trigger SOS flow when user taps SOS from notification
-        triggerSOS();
-      },
+      onSOS: () => triggerSOS(),
     });
   }, [dismissSOS, triggerSOS, toast]);
 
-  // Don't render SOS overlay in web dev mode
-  if (isWebDevMode) {
-    return null;
-  }
+  if (isWebDevMode) return null;
 
   const handleEmergencyConfirmed = async (location: { latitude: number; longitude: number }) => {
     if (onEmergencyConfirmed) {
@@ -75,37 +64,95 @@ const GlobalSOSWrapper = () => {
     }
   };
 
-  const handleSafe = () => {
-    toast({
-      title: "Glad you're safe!",
-      description: "The alert has been dismissed.",
-    });
-  };
-
   return (
     <GlobalSOSOverlay
       open={showSOS}
       onClose={dismissSOS}
       onEmergencyConfirmed={handleEmergencyConfirmed}
-      onSafe={handleSafe}
+      onSafe={() => toast({ title: "Glad you're safe!", description: "The alert has been dismissed." })}
     />
   );
 };
 
-// WEB-ONLY routes (hospital, admin, ambulance dashboards)
-const WebRoutes = () => {
-  return (
+/**
+ * WEB DEV routes - ALL routes accessible in browser via npm run dev
+ * Hospital, Admin, Ambulance dashboards + User routes for testing
+ */
+const WebRoutes = () => (
+  <Routes>
+    {/* Default landing → Hospital Login */}
+    <Route path="/" element={<HospitalLogin />} />
+
+    {/* Hospital */}
+    <Route path="/hospital/login" element={<HospitalLogin />} />
+    <Route path="/hospital" element={
+      <ProtectedRoute requiredRole="hospital" redirectTo="/hospital/login">
+        <HospitalDashboard />
+      </ProtectedRoute>
+    } />
+
+    {/* Admin */}
+    <Route path="/admin" element={
+      <ProtectedRoute requiredRole="admin" redirectTo="/hospital/login">
+        <AdminPanel />
+      </ProtectedRoute>
+    } />
+
+    {/* Ambulance - both /ambulance and /ambulance/driver work */}
+    <Route path="/ambulance/driver" element={
+      <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+        <AmbulanceDriverDashboard />
+      </ProtectedRoute>
+    } />
+    <Route path="/ambulance" element={
+      <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+        <AmbulanceDriverDashboard />
+      </ProtectedRoute>
+    } />
+
+    {/* User routes - accessible in web dev for testing */}
+    <Route path="/auth" element={<Auth />} />
+    <Route path="/onboarding" element={<Onboarding />} />
+    <Route path="/dashboard" element={<Dashboard />} />
+    <Route path="/settings" element={<Settings />} />
+    <Route path="/emergency" element={<Dashboard />} />
+
+    {/* Catch-all */}
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
+
+/**
+ * MOBILE routes - native app with SOS, GPS, accelerometer
+ */
+const MobileRoutes = () => (
+  <MobileOnly>
+    <GlobalSOSWrapper />
     <Routes>
-      {/* Web dashboard routes - no MobileOnly wrapper */}
-      <Route path="/" element={<HospitalLogin />} />
+      <Route path="/" element={<Index />} />
+      <Route path="/auth" element={<Auth />} />
       <Route path="/hospital/login" element={<HospitalLogin />} />
+
+      <Route path="/onboarding" element={
+        <ProtectedRoute requiredRole="user"><Onboarding /></ProtectedRoute>
+      } />
+      <Route path="/dashboard" element={
+        <ProtectedRoute requiredRole="user"><Dashboard /></ProtectedRoute>
+      } />
+      <Route path="/settings" element={
+        <ProtectedRoute requiredRole="user"><Settings /></ProtectedRoute>
+      } />
+      <Route path="/emergency" element={
+        <ProtectedRoute requiredRole="user"><Dashboard /></ProtectedRoute>
+      } />
+
       <Route path="/hospital" element={
         <ProtectedRoute requiredRole="hospital" redirectTo="/hospital/login">
           <HospitalDashboard />
         </ProtectedRoute>
       } />
       <Route path="/admin" element={
-        <ProtectedRoute requiredRole="admin" redirectTo="/hospital/login">
+        <ProtectedRoute requiredRole="admin" redirectTo="/auth">
           <AdminPanel />
         </ProtectedRoute>
       } />
@@ -114,76 +161,17 @@ const WebRoutes = () => {
           <AmbulanceDriverDashboard />
         </ProtectedRoute>
       } />
-      
-      {/* Redirect mobile routes to hospital login in web mode */}
-      <Route path="/auth" element={<HospitalLogin />} />
-      <Route path="/onboarding" element={<HospitalLogin />} />
-      <Route path="/dashboard" element={<HospitalLogin />} />
-      <Route path="/settings" element={<HospitalLogin />} />
-      
-      {/* Catch-all */}
+      <Route path="/ambulance" element={
+        <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+          <AmbulanceDriverDashboard />
+        </ProtectedRoute>
+      } />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
-  );
-};
+  </MobileOnly>
+);
 
-// MOBILE routes (user app with SOS, GPS, accelerometer)
-const MobileRoutes = () => {
-  return (
-    <MobileOnly>
-      <GlobalSOSWrapper />
-      <Routes>
-        {/* Public routes */}
-        <Route path="/" element={<Index />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/hospital/login" element={<HospitalLogin />} />
-        
-        {/* User routes - require 'user' role */}
-        <Route path="/onboarding" element={
-          <ProtectedRoute requiredRole="user">
-            <Onboarding />
-          </ProtectedRoute>
-        } />
-        <Route path="/dashboard" element={
-          <ProtectedRoute requiredRole="user">
-            <Dashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/settings" element={
-          <ProtectedRoute requiredRole="user">
-            <Settings />
-          </ProtectedRoute>
-        } />
-        
-        {/* Hospital routes - require 'hospital' role */}
-        <Route path="/hospital" element={
-          <ProtectedRoute requiredRole="hospital" redirectTo="/hospital/login">
-            <HospitalDashboard />
-          </ProtectedRoute>
-        } />
-        
-        {/* Admin routes - require 'admin' role */}
-        <Route path="/admin" element={
-          <ProtectedRoute requiredRole="admin" redirectTo="/auth">
-            <AdminPanel />
-          </ProtectedRoute>
-        } />
-        
-        {/* Ambulance routes - require 'ambulance' role */}
-        <Route path="/ambulance/driver" element={
-          <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
-            <AmbulanceDriverDashboard />
-          </ProtectedRoute>
-        } />
-        
-        {/* Catch-all */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </MobileOnly>
-  );
-};
-
-// App initialization wrapper component
 const AppContent = () => {
   const { initialized, permissions, platform } = useAppInitialization();
 
@@ -191,19 +179,13 @@ const AppContent = () => {
     console.log('[App] Initialized on', platform, 'with permissions:', permissions);
   }
 
-  // Log which mode we're running in
   useEffect(() => {
-    if (isWebDevMode) {
-      console.log('[App] 🖥️ Running in WEB DEV mode - mobile routes disabled');
-    } else {
-      console.log('[App] 📱 Running in MOBILE mode');
-    }
+    console.log(isWebDevMode ? '[App] 🖥️ WEB DEV mode' : '[App] 📱 MOBILE mode');
   }, []);
 
   return (
     <AppErrorBoundary>
       <BrowserRouter>
-        {/* Conditionally render web or mobile routes based on environment */}
         {isWebDevMode ? <WebRoutes /> : <MobileRoutes />}
       </BrowserRouter>
     </AppErrorBoundary>

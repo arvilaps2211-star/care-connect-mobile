@@ -1,16 +1,16 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.careconnect',
-  appName: 'CareConnect',
-  webDir: 'dist',
+  appId: 'com.careconnect.ambulance',
+  appName: 'Ambulance Driver',
+  webDir: 'dist-ambulance',
   server: {
     androidScheme: 'https',
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
-      backgroundColor: '#3b82f6',
+      backgroundColor: '#dc2626',
       showSpinner: false,
     },
     Geolocation: {

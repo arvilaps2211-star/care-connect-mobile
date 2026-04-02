@@ -5,8 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:user": "VITE_APP_TYPE=user vite build",
+    "build:ambulance": "VITE_APP_TYPE=ambulance vite build --outDir dist-ambulance",
+    "cap:user": "npm run build && npx cap sync android --config capacitor.user.config.ts",
+    "cap:ambulance": "npm run build:ambulance && npx cap sync android --config capacitor.ambulance.config.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
