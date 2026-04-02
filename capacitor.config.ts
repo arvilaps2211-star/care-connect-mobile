@@ -5,22 +5,21 @@ const config: CapacitorConfig = {
   appName: 'CareConnect',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
       backgroundColor: '#3b82f6',
-      showSpinner: false
+      showSpinner: false,
     },
     Geolocation: {
-      enableHighAccuracy: true
-    }
+      enableHighAccuracy: true,
+    },
   },
   android: {
     allowMixedContent: true,
-    webContentsDebuggingEnabled: true
-  }
+  },
 };
 
 export default config;
