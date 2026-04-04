@@ -296,7 +296,17 @@ const Dashboard = () => {
               <p className="text-sm text-muted-foreground">Welcome, {profile.name}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* GPS Accuracy Indicator */}
+            {location && typeof location.accuracy === "number" && (
+              <span className={`text-xs font-mono px-2 py-1 rounded-full ${
+                location.accuracy <= 15
+                  ? "bg-green-500/20 text-green-600"
+                  : "bg-yellow-500/20 text-yellow-600"
+              }`}>
+                GPS: ±{Math.round(location.accuracy)}m
+              </span>
+            )}
             <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
               <Settings className="w-5 h-5" />
             </Button>
