@@ -831,9 +831,7 @@ const HospitalDashboard = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-red-500 to-red-600 p-3 rounded-xl">
-                <Activity className="w-8 h-8 text-white" />
-              </div>
+              <img src="/hospital-logo.png" alt="CareConnect Logo" className="w-12 h-12 rounded-xl" width={512} height={512} />
               <div>
                 <h1 className="text-2xl font-bold text-white">CareConnect Hospitals</h1>
                 {entityInfo && <p className="text-slate-400">{entityInfo.name}</p>}
