@@ -12,25 +12,31 @@ interface EmergencyModalProps {
   onSafe: () => void;
 }
 
+const GPS_ACCURACY_THRESHOLD = 15; // meters
+
 const EmergencyModal = ({
   open,
   onOpenChange,
   onEmergencyConfirmed,
   onSafe,
 }: EmergencyModalProps) => {
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [showLocationHelp, setShowLocationHelp] = useState(false);
+
+  const accuracy = location?.accuracy ?? null;
+  const isAccuracyGood = accuracy !== null && accuracy <= GPS_ACCURACY_THRESHOLD;
 
   const resolveLocation = async () => {
     setIsLocating(true);
     setLocationError(null);
     try {
       const coords = await getCurrentPosition();
+      console.log("[EmergencyModal] GPS fix:", coords.latitude.toFixed(5), coords.longitude.toFixed(5), "±" + (coords.accuracy ?? "?") + "m");
       setLocation(coords);
     } catch (error: any) {
-      console.error("Error getting location:", error);
+      console.error("[EmergencyModal] Error getting location:", error);
       setLocation(null);
       setLocationError(error?.message || "Unable to get your location. Please enable location services.");
     } finally {
