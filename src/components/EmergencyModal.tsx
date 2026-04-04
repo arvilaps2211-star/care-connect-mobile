@@ -92,16 +92,28 @@ const EmergencyModal = ({
             {isLocating ? (
               <p className="text-center text-white/90 text-sm">Getting your location…</p>
             ) : location ? (
-              <p className="text-center text-white/90 text-sm">
-                Location ready: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
-              </p>
+              <div className="text-center space-y-1">
+                <p className="text-white/90 text-sm">
+                  Location ready: {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+                </p>
+                {accuracy !== null && (
+                  <p className={`text-sm font-semibold ${isAccuracyGood ? "text-green-300" : "text-yellow-300"}`}>
+                    GPS: ±{Math.round(accuracy)}m {isAccuracyGood ? "✓" : "(waiting for ≤15m)"}
+                  </p>
+                )}
+                {!isAccuracyGood && (
+                  <p className="text-white/70 text-xs">
+                    Waiting for better GPS signal (current: ±{Math.round(accuracy ?? 0)}m)
+                  </p>
+                )}
+              </div>
             ) : (
               <p className="text-center text-white/90 text-sm">
                 Location not available{locationError ? `: ${locationError}` : "."}
               </p>
             )}
 
-            {!location && (
+            {(!location || !isAccuracyGood) && (
               <>
                 <Button
                   onClick={resolveLocation}
@@ -110,18 +122,20 @@ const EmergencyModal = ({
                   className="w-full bg-white/15 text-white hover:bg-white/20"
                   disabled={isLocating}
                 >
-                  <RefreshCw className="mr-2 h-5 w-5" />
-                  Retry GPS
+                  <RefreshCw className={`mr-2 h-5 w-5 ${isLocating ? "animate-spin" : ""}`} />
+                  {location ? "Refine GPS" : "Retry GPS"}
                 </Button>
-                <Button
-                  onClick={() => setShowLocationHelp(true)}
-                  variant="link"
-                  size="sm"
-                  className="w-full text-white/80 hover:text-white"
-                >
-                  <HelpCircle className="mr-1 h-4 w-4" />
-                  Need help enabling location?
-                </Button>
+                {!location && (
+                  <Button
+                    onClick={() => setShowLocationHelp(true)}
+                    variant="link"
+                    size="sm"
+                    className="w-full text-white/80 hover:text-white"
+                  >
+                    <HelpCircle className="mr-1 h-4 w-4" />
+                    Need help enabling location?
+                  </Button>
+                )}
               </>
             )}
           </div>
