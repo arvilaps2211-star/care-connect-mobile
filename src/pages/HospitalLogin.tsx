@@ -204,10 +204,8 @@ const HospitalLogin = () => {
     <div className="min-h-screen min-h-dvh bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 md:p-8 overflow-x-hidden overflow-y-auto">
       <div className="w-full max-w-lg">
         {/* Logo & Branding */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-2xl mb-4">
-            <Activity className="w-12 h-12 text-white" />
-          </div>
+         <div className="text-center mb-8">
+          <img src="/hospital-logo.png" alt="CareConnect Hospital Logo" className="w-20 h-20 mx-auto mb-4" width={512} height={512} />
           <h1 className="text-3xl font-bold text-white">CareConnect Hospitals</h1>
           <p className="text-slate-400 mt-2">Emergency Response Command Center</p>
         </div>
@@ -465,21 +463,7 @@ const HospitalLogin = () => {
           </div>
         </Card>
 
-        {/* Ambulance Login Link */}
-        <div className="text-center mt-6">
-          <p className="text-slate-400 text-sm">
-            Are you an ambulance service?{" "}
-            <Button
-              variant="link"
-              onClick={() => navigate("/ambulance/login")}
-              className="text-orange-400 hover:text-orange-300 p-0"
-            >
-              Ambulance Login
-            </Button>
-          </p>
-        </div>
-
-        <p className="text-center text-slate-500 text-sm mt-4">
+        <p className="text-center text-slate-500 text-sm mt-6">
           CareConnect © 2024 • Emergency Response System
         </p>
       </div>
