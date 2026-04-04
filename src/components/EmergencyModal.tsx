@@ -149,8 +149,8 @@ const EmergencyModal = ({
             <Button
               onClick={handleEmergency}
               size="lg"
-              className="bg-white text-emergency hover:bg-white/90 font-bold h-16 shadow-emergency"
-              disabled={isLocating}
+              className="bg-white text-emergency hover:bg-white/90 font-bold h-16 shadow-emergency disabled:opacity-50"
+              disabled={isLocating || !location || !isAccuracyGood}
             >
               <AlertCircle className="mr-2 w-5 h-5" />
               EMERGENCY
