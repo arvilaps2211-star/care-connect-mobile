@@ -29,6 +29,9 @@ const queryClient = new QueryClient();
 // Detect if we're in WEB development mode (npm run dev on desktop)
 const isWebDevMode = import.meta.env.DEV && !isNativePlatform();
 
+// Detect if this is the standalone ambulance app build
+const isAmbulanceApp = import.meta.env.VITE_APP_TYPE === "ambulance";
+
 // Global SOS Overlay wrapper - ONLY for mobile mode
 const GlobalSOSWrapper = () => {
   const { showSOS, dismissSOS, onEmergencyConfirmed, triggerSOS } = useSOSContext();
