@@ -29,6 +29,9 @@ const queryClient = new QueryClient();
 // Detect if we're in WEB development mode (npm run dev on desktop)
 const isWebDevMode = import.meta.env.DEV && !isNativePlatform();
 
+// Detect if this is the standalone ambulance app build
+const isAmbulanceApp = import.meta.env.VITE_APP_TYPE === "ambulance";
+
 // Global SOS Overlay wrapper - ONLY for mobile mode
 const GlobalSOSWrapper = () => {
   const { showSOS, dismissSOS, onEmergencyConfirmed, triggerSOS } = useSOSContext();
@@ -172,6 +175,16 @@ const MobileRoutes = () => (
   </MobileOnly>
 );
 
+/**
+ * AMBULANCE APP routes - standalone ambulance driver app
+ * No auth gate — the driver authenticates via ambulance ID in URL params
+ */
+const AmbulanceAppRoutes = () => (
+  <Routes>
+    <Route path="*" element={<AmbulanceDriverDashboard />} />
+  </Routes>
+);
+
 const AppContent = () => {
   const { initialized, permissions, platform } = useAppInitialization();
 
@@ -180,13 +193,25 @@ const AppContent = () => {
   }
 
   useEffect(() => {
-    console.log(isWebDevMode ? '[App] 🖥️ WEB DEV mode' : '[App] 📱 MOBILE mode');
+    if (isAmbulanceApp) {
+      console.log('[App] 🚑 AMBULANCE APP mode');
+    } else if (isWebDevMode) {
+      console.log('[App] 🖥️ WEB DEV mode');
+    } else {
+      console.log('[App] 📱 MOBILE mode');
+    }
   }, []);
+
+  const getRoutes = () => {
+    if (isAmbulanceApp) return <AmbulanceAppRoutes />;
+    if (isWebDevMode) return <WebRoutes />;
+    return <MobileRoutes />;
+  };
 
   return (
     <AppErrorBoundary>
       <BrowserRouter>
-        {isWebDevMode ? <WebRoutes /> : <MobileRoutes />}
+        {getRoutes()}
       </BrowserRouter>
     </AppErrorBoundary>
   );
