@@ -9,7 +9,9 @@
         "@capacitor/camera": "^5.0.10",
         "@capacitor/cli": "^5.7.8",
         "@capacitor/core": "^5.7.8",
+        "@capacitor/device": "^5.0.8",
         "@capacitor/geolocation": "^5.0.7",
+        "@capacitor/haptics": "^5.0.7",
         "@capacitor/ios": "^5.7.8",
         "@capacitor/local-notifications": "^5.0.7",
         "@capacitor/push-notifications": "^5.1.1",
@@ -110,7 +112,11 @@
 
     "@capacitor/core": ["@capacitor/core@5.7.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/core/-/core-5.7.8.tgz", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-rrZcm/2vJM0WdWRQup1TUidbjQV9PfIadSkV4rAGLD7R6PuzZSMPGT0gmoZzCRlXkqrazrWWDkurei3ozU02FA=="],
 
+    "@capacitor/device": ["@capacitor/device@5.0.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/device/-/device-5.0.8.tgz", { "peerDependencies": { "@capacitor/core": "^5.0.0" } }, "sha512-JKkoBwZBM2z6EnzPzjeRuAEtvKQQ+WwQ1eyBhtNwBygNczVTtpGeQTwEt8fZfdI7dDi/sxvh1M3Sc5jWGW14fw=="],
+
     "@capacitor/geolocation": ["@capacitor/geolocation@5.0.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/geolocation/-/geolocation-5.0.8.tgz", { "peerDependencies": { "@capacitor/core": "^5.0.0" } }, "sha512-ikyAKtgTfBeyZVAhDQ0Cbor6yJ18QM+xstlwRIiTRKMZDHty7rhCB0nTLpZvCGe1RQh7JLInUuKX2mPWaNELUQ=="],
+
+    "@capacitor/haptics": ["@capacitor/haptics@5.0.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/haptics/-/haptics-5.0.8.tgz", { "peerDependencies": { "@capacitor/core": "^5.0.0" } }, "sha512-PkmBlaApk0vQ/ddm875H0VPmnmUUAQ+lxEtGgvJAaXV83acDdo6zH+pJLCodgIR7UPiscfdcqt6xajeYw2Ld1w=="],
 
     "@capacitor/ios": ["@capacitor/ios@5.7.8", "https://europe-west1-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@capacitor/ios/-/ios-5.7.8.tgz", { "peerDependencies": { "@capacitor/core": "^5.7.0" } }, "sha512-XhGrziBnlRmCJ97LdPXOJquHPpYTwSJZIxYSXuPl7SDDuAEve8vs2wY76gLdaaFH2Z6ctdugUX+jR6VNu+ds+w=="],
 
