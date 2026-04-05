@@ -102,19 +102,16 @@ const WebRoutes = () => (
       </ProtectedRoute>
     } />
 
-    {/* Ambulance - both /ambulance and /ambulance/driver work */}
+    {/* Ambulance */}
+    <Route path="/ambulance/login" element={<AmbulanceLogin />} />
     <Route path="/ambulance/driver" element={
-      <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+      <ProtectedRoute requiredRole="ambulance" redirectTo="/ambulance/login">
         <AmbulanceDriverDashboard />
       </ProtectedRoute>
     } />
-    <Route path="/ambulance" element={
-      <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
-        <AmbulanceDriverDashboard />
-      </ProtectedRoute>
-    } />
+    <Route path="/ambulance" element={<AmbulanceLogin />} />
 
-    {/* User routes - accessible in web dev for testing */}
+    {/* User routes */}
     <Route path="/auth" element={<Auth />} />
     <Route path="/onboarding" element={<Onboarding />} />
     <Route path="/dashboard" element={<Dashboard />} />
