@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import HospitalLogin from "./pages/HospitalLogin";
 import HospitalDashboard from "./pages/HospitalDashboard";
 import AdminPanel from "./pages/AdminPanel";
+import AmbulanceLogin from "./pages/AmbulanceLogin";
 import NotFound from "./pages/NotFound";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
