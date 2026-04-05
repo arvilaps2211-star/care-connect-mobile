@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.careconnect.ambulance',
-  appName: 'Ambulance Driver',
+  appName: 'CareConnect Ambulance',
   webDir: 'dist-ambulance',
   server: {
     androidScheme: 'https',
@@ -15,6 +15,13 @@ const config: CapacitorConfig = {
     },
     Geolocation: {
       enableHighAccuracy: true,
+    },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
+    LocalNotifications: {
+      smallIcon: "ic_notification",
+      iconColor: "#dc2626",
     },
   },
   android: {

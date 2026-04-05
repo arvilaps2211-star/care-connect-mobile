@@ -157,16 +157,13 @@ const MobileRoutes = () => (
           <AdminPanel />
         </ProtectedRoute>
       } />
+      <Route path="/ambulance/login" element={<AmbulanceLogin />} />
       <Route path="/ambulance/driver" element={
-        <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
+        <ProtectedRoute requiredRole="ambulance" redirectTo="/ambulance/login">
           <AmbulanceDriverDashboard />
         </ProtectedRoute>
       } />
-      <Route path="/ambulance" element={
-        <ProtectedRoute requiredRole="ambulance" redirectTo="/hospital/login">
-          <AmbulanceDriverDashboard />
-        </ProtectedRoute>
-      } />
+      <Route path="/ambulance" element={<AmbulanceLogin />} />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
