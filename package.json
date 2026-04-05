@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:ambulance": "vite --mode ambulance",
     "dev:all": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
@@ -22,7 +23,9 @@
     "@capacitor/camera": "^5.0.10",
     "@capacitor/cli": "^5.7.8",
     "@capacitor/core": "^5.7.8",
+    "@capacitor/device": "^5.0.8",
     "@capacitor/geolocation": "^5.0.7",
+    "@capacitor/haptics": "^5.0.7",
     "@capacitor/ios": "^5.7.8",
     "@capacitor/local-notifications": "^5.0.7",
     "@capacitor/push-notifications": "^5.1.1",
