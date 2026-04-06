@@ -154,11 +154,7 @@ const MobileRoutes = () => (
         </ProtectedRoute>
       } />
       <Route path="/ambulance/login" element={<AmbulanceLogin />} />
-      <Route path="/ambulance/driver" element={
-        <ProtectedRoute requiredRole="ambulance" redirectTo="/ambulance/login">
-          <AmbulanceDriverDashboard />
-        </ProtectedRoute>
-      } />
+      <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
       <Route path="/ambulance" element={<AmbulanceLogin />} />
 
       <Route path="*" element={<NotFound />} />
