@@ -13,7 +13,7 @@ import {
 import GPSTracker from "@/components/GPSTracker";
 import { calculateETA, getETAStatus } from "@/utils/eta";
 import { useBackgroundLocation } from "@/hooks/useBackgroundLocation";
-import { useRealtimeLocation, getAccuracyGrade, getAccuracyColor, getAccuracyBgColor } from "@/hooks/useRealtimeLocation";
+import { useRealtimeLocation, getAccuracyColor, getAccuracyBgColor } from "@/hooks/useRealtimeLocation";
 import { openGoogleMapsNavigation } from "@/utils/navigation";
 import { playEmergencyAlert, playNotificationSound, triggerFullEmergencyAlert } from "@/services/audioAlertService";
 import FallbackLocationNotice from "@/components/FallbackLocationNotice";
