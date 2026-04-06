@@ -15,8 +15,7 @@ import { calculateETA, getETAStatus } from "@/utils/eta";
 import { useBackgroundLocation } from "@/hooks/useBackgroundLocation";
 import { useRealtimeLocation, getAccuracyColor, getAccuracyBgColor } from "@/hooks/useRealtimeLocation";
 import { openGoogleMapsNavigation } from "@/utils/navigation";
-import { playEmergencyAlert, playNotificationSound, triggerFullEmergencyAlert } from "@/services/audioAlertService";
-import FallbackLocationNotice from "@/components/FallbackLocationNotice";
+import { triggerFullEmergencyAlert } from "@/services/audioAlertService";
 
 // --- Types ---
 
