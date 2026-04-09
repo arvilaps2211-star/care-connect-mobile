@@ -46,16 +46,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- ═══════════════════════════════════════════════════ -->
-    <!--  FOREGROUND SERVICE (GPS tracking / emergency)      -->
+    <!--  FOREGROUND SERVICE (GPS tracking / crash detect)   -->
     <!-- ═══════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Android 14+ requires specific foreground service type permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- ═══════════════════════════════════════════════════ -->
-    <!--  MISC                                               -->
+    <!--  LOCK SCREEN / WAKE                                 -->
     <!-- ═══════════════════════════════════════════════════ -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:allowBackup="true"
@@ -81,6 +84,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Emergency popup — appears over lock screen on crash detection -->
+        <activity
+            android:name=".EmergencyPopupActivity"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:exported="false" />
+
+        <!-- Crash detection foreground service -->
+        <service
+            android:name=".CrashDetectionService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

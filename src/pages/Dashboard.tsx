@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, Shield, Activity, MapPin, RefreshCw, Navigation, MessageSquare } from "lucide-react";
-import AccelerometerMonitor from "@/components/AccelerometerMonitor";
+import { AlertCircle, Heart, LogOut, Settings, MapPin, RefreshCw, Navigation, MessageSquare } from "lucide-react";
+import MonitoringToggle from "@/components/MonitoringToggle";
 import { useSOSContext } from "@/contexts/SOSContext";
 import { useLocation } from "@/hooks/useLocation";
 import GPSTracker from "@/components/GPSTracker";
@@ -15,7 +15,7 @@ import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [isMonitoring, setIsMonitoring] = useState(false);
+  
   const [showMap, setShowMap] = useState(false);
   const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
@@ -261,10 +261,6 @@ const Dashboard = () => {
     navigate("/auth");
   };
 
-  // Trigger global SOS overlay when accelerometer detects accident
-  const handleAccidentDetected = () => {
-    triggerSOS();
-  };
 
   if (!profile) {
     return (
@@ -408,40 +404,8 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Monitoring Status */}
-        <Card className="border-2 border-primary shadow-glow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              Accident Detection
-            </CardTitle>
-            <CardDescription>
-              {isMonitoring
-                ? "Actively monitoring for abnormal movement"
-                : "Start monitoring to enable accident detection"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={() => setIsMonitoring(!isMonitoring)}
-              size="lg"
-              className={
-                isMonitoring
-                  ? "w-full bg-gradient-safe"
-                  : "w-full bg-gradient-emergency"
-              }
-            >
-              {isMonitoring ? (
-                <>
-                  <Activity className="mr-2 w-5 h-5 animate-pulse" />
-                  Monitoring Active
-                </>
-              ) : (
-                "Start Monitoring"
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Background Crash Detection */}
+        <MonitoringToggle showSimulate={true} />
 
         {/* Manual Emergency with SMS Status */}
         <Card className="border-2 border-emergency">
@@ -534,10 +498,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Accelerometer Monitor - triggers global SOS overlay */}
-      {isMonitoring && (
-        <AccelerometerMonitor onAccidentDetected={handleAccidentDetected} />
-      )}
+      {/* Background crash detection is now handled by useCrashDetection hook inside MonitoringToggle */}
     </div>
   );
 };
