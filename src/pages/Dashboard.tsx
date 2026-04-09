@@ -15,7 +15,7 @@ import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  // isMonitoring state is now managed by useCrashDetection inside MonitoringToggle
+  
   const [showMap, setShowMap] = useState(false);
   const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
