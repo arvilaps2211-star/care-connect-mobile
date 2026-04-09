@@ -261,10 +261,6 @@ const Dashboard = () => {
     navigate("/auth");
   };
 
-  // Trigger global SOS overlay when accelerometer detects accident
-  const handleAccidentDetected = () => {
-    triggerSOS();
-  };
 
   if (!profile) {
     return (
