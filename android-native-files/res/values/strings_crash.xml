@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crash_channel_name">Crash Detection</string>
+    <string name="crash_channel_description">Persistent notification while crash monitoring is active</string>
+    <string name="crash_notification_title">CareConnect Monitoring</string>
+    <string name="crash_notification_text">Crash detection is active</string>
+    <string name="emergency_title">⚠️ CRASH DETECTED</string>
+    <string name="emergency_btn">🚨 EMERGENCY</string>
+    <string name="safe_btn">✅ I\'M SAFE</string>
+</resources>
