@@ -808,10 +808,19 @@ const HospitalDashboard = () => {
             )}
 
             {cardType === "accepted" && (
-              <Button onClick={() => openDispatchModal(emergency)} disabled={ambulances.length === 0} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-6" size="lg">
-                <Ambulance className="mr-2 h-5 w-5" />
-                {ambulances.length === 0 ? "Add Ambulance First" : "Dispatch Ambulance"}
-              </Button>
+              <div className="space-y-2">
+                <Button onClick={() => openDispatchModal(emergency)} disabled={ambulances.length === 0} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-6" size="lg">
+                  <Ambulance className="mr-2 h-5 w-5" />
+                  {ambulances.length === 0 ? "Add Ambulance First" : "Dispatch Ambulance"}
+                </Button>
+                {authUserId && (
+                  <EmergencyChat
+                    emergencyId={emergency.id}
+                    myRole="hospital"
+                    myUserId={authUserId}
+                  />
+                )}
+              </div>
             )}
 
             {cardType === "dispatched" && (
