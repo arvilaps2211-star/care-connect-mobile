@@ -97,6 +97,36 @@ export type Database = {
           },
         ]
       }
+      emergency_messages: {
+        Row: {
+          created_at: string
+          emergency_id: string
+          id: string
+          message: string
+          read: boolean
+          sender_id: string
+          sender_role: string
+        }
+        Insert: {
+          created_at?: string
+          emergency_id: string
+          id?: string
+          message: string
+          read?: boolean
+          sender_id: string
+          sender_role: string
+        }
+        Update: {
+          created_at?: string
+          emergency_id?: string
+          id?: string
+          message?: string
+          read?: boolean
+          sender_id?: string
+          sender_role?: string
+        }
+        Relationships: []
+      }
       fcm_tokens: {
         Row: {
           created_at: string | null
