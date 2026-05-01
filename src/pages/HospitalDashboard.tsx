@@ -15,6 +15,7 @@ import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
 import { watchWebLocation } from "@/utils/webGeolocation";
 import { sendHospitalAcceptanceSMS, sendAmbulanceDispatchSMS } from "@/utils/smsService";
 import { SMSNotificationSummary } from "@/components/SMSStatusBadge";
+import EmergencyChat from "@/components/EmergencyChat";
 
 interface Guardian {
   name: string;
@@ -86,6 +87,21 @@ const HospitalDashboard = () => {
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [emergencyToDispatch, setEmergencyToDispatch] = useState<Emergency | null>(null);
   const [selectedAmbulanceId, setSelectedAmbulanceId] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) setAuthUserId(session?.user?.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -792,10 +808,19 @@ const HospitalDashboard = () => {
             )}
 
             {cardType === "accepted" && (
-              <Button onClick={() => openDispatchModal(emergency)} disabled={ambulances.length === 0} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-6" size="lg">
-                <Ambulance className="mr-2 h-5 w-5" />
-                {ambulances.length === 0 ? "Add Ambulance First" : "Dispatch Ambulance"}
-              </Button>
+              <div className="space-y-2">
+                <Button onClick={() => openDispatchModal(emergency)} disabled={ambulances.length === 0} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-6" size="lg">
+                  <Ambulance className="mr-2 h-5 w-5" />
+                  {ambulances.length === 0 ? "Add Ambulance First" : "Dispatch Ambulance"}
+                </Button>
+                {authUserId && (
+                  <EmergencyChat
+                    emergencyId={emergency.id}
+                    myRole="hospital"
+                    myUserId={authUserId}
+                  />
+                )}
+              </div>
             )}
 
             {cardType === "dispatched" && (
@@ -805,6 +830,13 @@ const HospitalDashboard = () => {
                   <CheckCircle className="mr-2 h-5 w-5" />
                   Mark as Resolved
                 </Button>
+                {authUserId && (
+                  <EmergencyChat
+                    emergencyId={emergency.id}
+                    myRole="hospital"
+                    myUserId={authUserId}
+                  />
+                )}
               </div>
             )}
           </div>

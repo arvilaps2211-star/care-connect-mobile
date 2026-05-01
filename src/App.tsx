@@ -89,6 +89,7 @@ const WebRoutes = () => (
 
     {/* Hospital */}
     <Route path="/hospital/login" element={<HospitalLogin />} />
+    <Route path="/hospital-login" element={<HospitalLogin />} />
     <Route path="/hospital" element={
       <ProtectedRoute requiredRole="hospital" redirectTo="/hospital/login">
         <HospitalDashboard />
@@ -104,6 +105,7 @@ const WebRoutes = () => (
 
     {/* Ambulance */}
     <Route path="/ambulance/login" element={<AmbulanceLogin />} />
+    <Route path="/ambulance-login" element={<AmbulanceLogin />} />
     <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
     <Route path="/ambulance" element={<AmbulanceLogin />} />
 
@@ -129,6 +131,7 @@ const MobileRoutes = () => (
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/hospital/login" element={<HospitalLogin />} />
+      <Route path="/hospital-login" element={<HospitalLogin />} />
 
       <Route path="/onboarding" element={
         <ProtectedRoute requiredRole="user"><Onboarding /></ProtectedRoute>
@@ -154,6 +157,7 @@ const MobileRoutes = () => (
         </ProtectedRoute>
       } />
       <Route path="/ambulance/login" element={<AmbulanceLogin />} />
+      <Route path="/ambulance-login" element={<AmbulanceLogin />} />
       <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
       <Route path="/ambulance" element={<AmbulanceLogin />} />
 

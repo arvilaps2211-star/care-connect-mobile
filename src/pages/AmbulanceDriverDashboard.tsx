@@ -16,6 +16,10 @@ import { useBackgroundLocation } from "@/hooks/useBackgroundLocation";
 import { useRealtimeLocation, getAccuracyColor, getAccuracyBgColor } from "@/hooks/useRealtimeLocation";
 import { openGoogleMapsNavigation } from "@/utils/navigation";
 import { triggerFullEmergencyAlert } from "@/services/audioAlertService";
+import OfflineBanner from "@/components/OfflineBanner";
+import EmergencyChat from "@/components/EmergencyChat";
+import RouteMap from "@/components/RouteMap";
+import TripHistory from "@/components/TripHistory";
 
 // --- Types ---
 
@@ -81,9 +85,25 @@ const AmbulanceDriverDashboard = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("available");
   const prevDispatchCountRef = useRef(0);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Track signed-in user (chat is only enabled for authenticated drivers)
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) setAuthUserId(session?.user?.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // --- GPS Tracking ---
   const isGPSActive = driverStatus === "available" || driverStatus === "en_route";
@@ -445,8 +465,33 @@ const AmbulanceDriverDashboard = () => {
                   </Button>
                 </div>
               )}
+              {authUserId && (
+                <EmergencyChat
+                  emergencyId={emergency.id}
+                  myRole="ambulance"
+                  myUserId={authUserId}
+                  className="mt-2"
+                />
+              )}
             </div>
           </div>
+          {/* Route map (in-transit only, when both points known) */}
+          {isInTransit &&
+            currentLocation &&
+            typeof emergency.latitude === "number" &&
+            typeof emergency.longitude === "number" && (
+              <div className="mt-6 rounded-lg bg-slate-900/40 p-3">
+                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
+                  <Navigation className="h-4 w-4" />
+                  Route to patient
+                </h4>
+                <RouteMap
+                  from={{ lat: currentLocation.latitude, lng: currentLocation.longitude }}
+                  to={{ lat: emergency.latitude, lng: emergency.longitude }}
+                  height={280}
+                />
+              </div>
+            )}
         </CardContent>
       </Card>
     );
@@ -458,6 +503,7 @@ const AmbulanceDriverDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <OfflineBanner />
       {/* Header */}
       <header className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
@@ -623,6 +669,7 @@ const AmbulanceDriverDashboard = () => {
               )}
             </>
           )}
+          {ambulanceId && <TripHistory ambulanceId={ambulanceId} />}
         </div>
       </main>
     </div>

@@ -5,8 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Truck, LogIn } from "lucide-react";
+
+const REMEMBER_KEY = "ambulance_remember_email";
 
 const AmbulanceLogin = () => {
   const [searchParams] = useSearchParams();
@@ -15,8 +18,18 @@ const AmbulanceLogin = () => {
   const [password, setPassword] = useState("");
   const [ambulanceId, setAmbulanceId] = useState(ambulanceIdFromUrl || "");
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Auto-fill remembered email
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBER_KEY);
+    if (saved) {
+      setEmail(saved);
+      setRememberMe(true);
+    }
+  }, []);
 
   // If ambulance ID is passed in URL, try direct access
   useEffect(() => {
@@ -64,6 +77,13 @@ const AmbulanceLogin = () => {
       if (error) throw error;
 
       if (data.user) {
+        // Persist or clear remembered email based on the checkbox
+        if (rememberMe) {
+          localStorage.setItem(REMEMBER_KEY, email);
+        } else {
+          localStorage.removeItem(REMEMBER_KEY);
+        }
+
         // Check ambulance role
         const { data: roleData } = await supabase
           .from("user_roles")
@@ -191,6 +211,19 @@ const AmbulanceLogin = () => {
                 className="bg-slate-900/50 border-slate-600 text-white"
                 required
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="remember-me"
+                checked={rememberMe}
+                onCheckedChange={(v) => setRememberMe(v === true)}
+              />
+              <Label
+                htmlFor="remember-me"
+                className="cursor-pointer text-sm text-slate-300"
+              >
+                Remember me on this device
+              </Label>
             </div>
             <Button
               type="submit"
