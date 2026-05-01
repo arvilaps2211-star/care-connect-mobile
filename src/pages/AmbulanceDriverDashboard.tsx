@@ -16,6 +16,10 @@ import { useBackgroundLocation } from "@/hooks/useBackgroundLocation";
 import { useRealtimeLocation, getAccuracyColor, getAccuracyBgColor } from "@/hooks/useRealtimeLocation";
 import { openGoogleMapsNavigation } from "@/utils/navigation";
 import { triggerFullEmergencyAlert } from "@/services/audioAlertService";
+import OfflineBanner from "@/components/OfflineBanner";
+import EmergencyChat from "@/components/EmergencyChat";
+import RouteMap from "@/components/RouteMap";
+import TripHistory from "@/components/TripHistory";
 
 // --- Types ---
 
