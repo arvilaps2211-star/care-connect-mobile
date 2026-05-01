@@ -465,8 +465,33 @@ const AmbulanceDriverDashboard = () => {
                   </Button>
                 </div>
               )}
+              {authUserId && (
+                <EmergencyChat
+                  emergencyId={emergency.id}
+                  myRole="ambulance"
+                  myUserId={authUserId}
+                  className="mt-2"
+                />
+              )}
             </div>
           </div>
+          {/* Route map (in-transit only, when both points known) */}
+          {isInTransit &&
+            currentLocation &&
+            typeof emergency.latitude === "number" &&
+            typeof emergency.longitude === "number" && (
+              <div className="mt-6 rounded-lg bg-slate-900/40 p-3">
+                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
+                  <Navigation className="h-4 w-4" />
+                  Route to patient
+                </h4>
+                <RouteMap
+                  from={{ lat: currentLocation.latitude, lng: currentLocation.longitude }}
+                  to={{ lat: emergency.latitude, lng: emergency.longitude }}
+                  height={280}
+                />
+              </div>
+            )}
         </CardContent>
       </Card>
     );
