@@ -821,6 +821,13 @@ const HospitalDashboard = () => {
                   <CheckCircle className="mr-2 h-5 w-5" />
                   Mark as Resolved
                 </Button>
+                {authUserId && (
+                  <EmergencyChat
+                    emergencyId={emergency.id}
+                    myRole="hospital"
+                    myUserId={authUserId}
+                  />
+                )}
               </div>
             )}
           </div>
