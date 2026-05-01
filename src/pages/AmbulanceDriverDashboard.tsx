@@ -85,9 +85,25 @@ const AmbulanceDriverDashboard = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [driverStatus, setDriverStatus] = useState<DriverStatus>("available");
   const prevDispatchCountRef = useRef(0);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Track signed-in user (chat is only enabled for authenticated drivers)
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) setAuthUserId(session?.user?.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // --- GPS Tracking ---
   const isGPSActive = driverStatus === "available" || driverStatus === "en_route";
