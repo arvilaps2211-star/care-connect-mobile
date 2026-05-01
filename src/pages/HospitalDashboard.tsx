@@ -15,6 +15,7 @@ import { calculateETA, getETAStatus, calculateDistance } from "@/utils/eta";
 import { watchWebLocation } from "@/utils/webGeolocation";
 import { sendHospitalAcceptanceSMS, sendAmbulanceDispatchSMS } from "@/utils/smsService";
 import { SMSNotificationSummary } from "@/components/SMSStatusBadge";
+import EmergencyChat from "@/components/EmergencyChat";
 
 interface Guardian {
   name: string;
@@ -86,6 +87,21 @@ const HospitalDashboard = () => {
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [emergencyToDispatch, setEmergencyToDispatch] = useState<Emergency | null>(null);
   const [selectedAmbulanceId, setSelectedAmbulanceId] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) setAuthUserId(session?.user?.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
   
   const navigate = useNavigate();
   const { toast } = useToast();
