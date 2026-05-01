@@ -669,6 +669,7 @@ const AmbulanceDriverDashboard = () => {
               )}
             </>
           )}
+          {ambulanceId && <TripHistory ambulanceId={ambulanceId} />}
         </div>
       </main>
     </div>
