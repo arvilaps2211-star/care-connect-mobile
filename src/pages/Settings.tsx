@@ -269,26 +269,6 @@ const Settings = () => {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-4">
-        {/* Test SMS */}
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-4">
-            <MessageSquare className="w-8 h-8 text-primary" />
-            <div>
-              <CardTitle>Test SMS</CardTitle>
-              <CardDescription>Send a test message to all your guardians</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              This will send a test SMS to {guardians.filter((g) => g.contact_number?.trim()).length || 0} guardian(s).
-            </p>
-            <Button className="w-full" onClick={handleSendTestSms} disabled={isSendingTest || guardians.filter((g) => g.contact_number?.trim()).length === 0}>
-              {isSendingTest ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : "Send Test SMS to Guardians"}
-            </Button>
-            <p className="text-sm text-muted-foreground">We'll include your current location (maps link) in the test message.</p>
-          </CardContent>
-        </Card>
-
         {/* Personal Information */}
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setPersonalOpen(true)}>
           <CardHeader className="flex flex-row items-center gap-4">
@@ -332,19 +312,6 @@ const Settings = () => {
             </div>
           </CardHeader>
         </Card>
-
-        {/* Diagnostics Section */}
-        <div className="pt-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
-            <Bug className="h-5 w-5 text-muted-foreground" />
-            Diagnostics
-          </h2>
-          <div className="space-y-4">
-            <SMSDiagnostic />
-            <LocationDebug />
-            <NotificationTester />
-          </div>
-        </div>
       </div>
 
       {/* Personal Info Sheet */}
