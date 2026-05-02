@@ -160,6 +160,26 @@ serve(async (req) => {
       );
     }
 
+    // Reject Alphanumeric Sender ID — Twilio trial accounts (and most use cases) reject this with 21267.
+    // The TWILIO_PHONE_NUMBER secret must be a real Twilio number in E.164 format (e.g. +15558675310).
+    const fromIsNumeric = /^\+?[1-9]\d{6,14}$/.test(twilioPhoneNumber.trim());
+    if (!fromIsNumeric) {
+      console.error(
+        `TWILIO_PHONE_NUMBER is not a valid E.164 number: "${twilioPhoneNumber}". ` +
+          `Alphanumeric Sender IDs (e.g. "CARECONNECT") are not allowed on trial accounts (Twilio error 21267).`
+      );
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "TWILIO_PHONE_NUMBER must be a real Twilio phone number in E.164 format (e.g. +15558675310). " +
+            "Alphanumeric Sender IDs cannot be used on trial accounts.",
+          errorCode: "21267",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
 
     // Send SMS to ALL guardians
