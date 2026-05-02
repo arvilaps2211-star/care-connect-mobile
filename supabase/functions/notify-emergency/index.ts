@@ -233,6 +233,32 @@ serve(async (req) => {
       );
     }
 
+    // Reject Alphanumeric Sender ID — Twilio trial accounts reject this with error 21267.
+    const fromIsNumeric = /^\+?[1-9]\d{6,14}$/.test(twilioPhoneNumber.trim());
+    if (!fromIsNumeric) {
+      console.error(
+        `TWILIO_PHONE_NUMBER is not a valid E.164 number: "${twilioPhoneNumber}". ` +
+          `Alphanumeric Sender IDs are not allowed on trial accounts (Twilio error 21267).`
+      );
+      await supabase
+        .from("emergencies")
+        .update({ notified_at: new Date().toISOString(), guardian_notified: false })
+        .eq("id", emergencyId);
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          guardianSmsStatus: "not_configured",
+          mapsLink,
+          error:
+            "TWILIO_PHONE_NUMBER must be a real Twilio phone number in E.164 format (e.g. +15558675310). " +
+            "Alphanumeric Sender IDs are not supported on trial accounts.",
+          errorCode: "21267",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check if there are guardians to notify
     if (guardians.length === 0) {
       console.log("No guardians found for user");

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentPosition } from "@/utils/geolocation";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2, Camera, MapPin, Bug } from "lucide-react";
+import { ArrowLeft, User, Heart, Users, Shield, Loader2, Plus, Trash2 } from "lucide-react";
 import ProfileImageCapture from "@/components/ProfileImageCapture";
-import SMSDiagnostic from "@/components/SMSDiagnostic";
-import LocationDebug from "@/components/LocationDebug";
-import NotificationTester from "@/components/NotificationTester";
 
 interface Guardian {
   id?: string;
@@ -27,9 +23,6 @@ interface Guardian {
 const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Test SMS
-  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Sheets
   const [personalOpen, setPersonalOpen] = useState(false);
@@ -129,99 +122,6 @@ const Settings = () => {
       setGuardians(guardianData);
     } else {
       setGuardians([]);
-    }
-  };
-
-  
-
-  const handleSendTestSms = async () => {
-    // Send test SMS to all guardians, not user's phone
-    const validGuardians = guardians.filter((g) => g.contact_number?.trim());
-    if (validGuardians.length === 0) {
-      toast({
-        title: "No guardians configured",
-        description: "Please add at least one guardian with a phone number first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSendingTest(true);
-    try {
-      const location = await getCurrentPosition();
-      const guardianPhones = validGuardians.map((g) => g.contact_number.trim());
-      const { data, error } = await supabase.functions.invoke("send-test-sms", {
-        body: { guardianPhones, location },
-      });
-
-      // If the backend returns a non-2xx status, Supabase sets `error`.
-      // Try to extract the JSON body so we can show provider errors (e.g., Twilio trial 21608).
-      if (error) {
-        const ctx = (error as any)?.context;
-        const rawBody = ctx?.body;
-
-        let parsed: any = null;
-        if (typeof rawBody === "string") {
-          try {
-            parsed = JSON.parse(rawBody);
-          } catch {
-            parsed = null;
-          }
-        } else if (rawBody && typeof rawBody === "object") {
-          parsed = rawBody;
-        }
-
-        const providerMsg = parsed?.providerResponse
-          ? String(parsed.providerResponse)
-          : parsed?.error
-            ? String(parsed.error)
-            : error.message;
-
-        toast({
-          title: "Test SMS failed",
-          description: providerMsg,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (data?.success === false) {
-        toast({
-          title: "Test SMS failed",
-          description: data?.error ?? "Unable to send test SMS",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Multi-guardian results
-      const results = data?.results ?? [];
-      const successCount = results.filter((r: any) => r.success).length;
-      const failCount = results.length - successCount;
-
-      if (successCount === 0 && results.length > 0) {
-        // All failed
-        const firstError = results[0]?.errorMessage ?? results[0]?.error ?? "Delivery failed";
-        toast({
-          title: "Test SMS failed",
-          description: `All ${results.length} message(s) failed: ${firstError}`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: data?.allSuccess ? "Test SMS sent" : "Partial delivery",
-        description: `Sent to ${successCount} of ${results.length} guardian(s)${failCount > 0 ? ` (${failCount} failed)` : ""}`,
-      });
-    } catch (e: any) {
-      toast({
-        title: "Test SMS failed",
-        description: e?.message ?? "Unable to send test SMS",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSendingTest(false);
     }
   };
 
@@ -369,26 +269,6 @@ const Settings = () => {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-4">
-        {/* Test SMS */}
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-4">
-            <MessageSquare className="w-8 h-8 text-primary" />
-            <div>
-              <CardTitle>Test SMS</CardTitle>
-              <CardDescription>Send a test message to all your guardians</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              This will send a test SMS to {guardians.filter((g) => g.contact_number?.trim()).length || 0} guardian(s).
-            </p>
-            <Button className="w-full" onClick={handleSendTestSms} disabled={isSendingTest || guardians.filter((g) => g.contact_number?.trim()).length === 0}>
-              {isSendingTest ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : "Send Test SMS to Guardians"}
-            </Button>
-            <p className="text-sm text-muted-foreground">We'll include your current location (maps link) in the test message.</p>
-          </CardContent>
-        </Card>
-
         {/* Personal Information */}
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setPersonalOpen(true)}>
           <CardHeader className="flex flex-row items-center gap-4">
@@ -432,19 +312,6 @@ const Settings = () => {
             </div>
           </CardHeader>
         </Card>
-
-        {/* Diagnostics Section */}
-        <div className="pt-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
-            <Bug className="h-5 w-5 text-muted-foreground" />
-            Diagnostics
-          </h2>
-          <div className="space-y-4">
-            <SMSDiagnostic />
-            <LocationDebug />
-            <NotificationTester />
-          </div>
-        </div>
       </div>
 
       {/* Personal Info Sheet */}

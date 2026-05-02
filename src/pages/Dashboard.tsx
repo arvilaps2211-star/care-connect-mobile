@@ -3,32 +3,42 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, MapPin, RefreshCw, Navigation, MessageSquare } from "lucide-react";
-import MonitoringToggle from "@/components/MonitoringToggle";
+import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff } from "lucide-react";
 import { useSOSContext } from "@/contexts/SOSContext";
-import { useLocation } from "@/hooks/useLocation";
-import GPSTracker from "@/components/GPSTracker";
 import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  
-  const [showMap, setShowMap] = useState(false);
+  const [monitoringEnabled, setMonitoringEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("emergency_monitoring_enabled");
+    return stored === null ? true : stored === "true";
+  });
   const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [isSendingSMS, setIsSendingSMS] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { triggerSOS, setEmergencyHandler } = useSOSContext();
-  
-  // Live GPS tracking using the reusable hook
-  const { location, status, error: locationError, isLoading: isLocating, refresh: refreshLocation } = useLocation({
-    watch: true,
-    highAccuracy: true,
-  });
+
+  const toggleMonitoring = (next: boolean) => {
+    setMonitoringEnabled(next);
+    try {
+      localStorage.setItem("emergency_monitoring_enabled", String(next));
+    } catch {}
+    toast({
+      title: next ? "Emergency Monitoring ON" : "Emergency Monitoring OFF",
+      description: next
+        ? "SOS button is active. Guardians will be notified in an emergency."
+        : "SOS button is disabled. Turn monitoring back on to send alerts.",
+      variant: next ? "default" : "destructive",
+    });
+  };
 
   // Emergency handling logic with improved SMS tracking
   const handleEmergencyConfirmed = useCallback(async (emergencyLocation: { latitude: number; longitude: number }) => {
@@ -96,13 +106,10 @@ const Dashboard = () => {
 
     if (guardianList.length > 0) {
       console.log("[SMS] Sending emergency SMS to", guardianList.length, "guardian(s)");
-      
-      // Determine location source for logging/debugging
+
       const locationSource = emergencyLocation.latitude !== 0 && emergencyLocation.longitude !== 0
-        ? (status === "granted" ? "gps" : "fallback")
+        ? "gps"
         : "unavailable";
-      
-      console.log("[GPS] Location source for SMS:", locationSource);
 
       const smsResult = await sendEmergencySMS({
         emergencyId: emergency.id,
@@ -293,16 +300,6 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* GPS Accuracy Indicator */}
-            {location && typeof location.accuracy === "number" && (
-              <span className={`text-xs font-mono px-2 py-1 rounded-full ${
-                location.accuracy <= 15
-                  ? "bg-green-500/20 text-green-600"
-                  : "bg-yellow-500/20 text-yellow-600"
-              }`}>
-                GPS: ±{Math.round(location.accuracy)}m
-              </span>
-            )}
             <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
               <Settings className="w-5 h-5" />
             </Button>
@@ -315,97 +312,31 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        {/* Live GPS Status */}
-        <Card className="border-2 border-blue-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-500" />
-                Live GPS Location
+        {/* Emergency Monitoring Toggle */}
+        <Card className={monitoringEnabled ? "border-2 border-primary" : "border-2 border-muted"}>
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              {monitoringEnabled ? (
+                <Bell className="w-5 h-5 text-primary" />
+              ) : (
+                <BellOff className="w-5 h-5 text-muted-foreground" />
+              )}
+              <div>
+                <Label htmlFor="monitoring-toggle" className="text-base font-semibold cursor-pointer">
+                  🔔 Emergency Monitoring
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {monitoringEnabled ? "SOS button is active" : "SOS button is disabled"}
+                </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={refreshLocation}
-                disabled={isLocating}
-              >
-                <RefreshCw className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* GPS Status Indicator */}
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${
-                status === "granted" && location ? "bg-green-500 animate-pulse" :
-                status === "denied" ? "bg-red-500" :
-                status === "requesting" || isLocating ? "bg-yellow-500 animate-pulse" :
-                "bg-gray-400"
-              }`} />
-              <span className="text-sm text-muted-foreground">
-                {status === "granted" && location ? "GPS Active" :
-                 status === "denied" ? "Permission Denied" :
-                 status === "requesting" ? "Requesting Permission..." :
-                 isLocating ? "Acquiring Location..." :
-                 "GPS Inactive"}
-              </span>
             </div>
-
-            {/* Coordinates Display */}
-            {location ? (
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="bg-muted/50 rounded-lg p-2">
-                  <span className="text-muted-foreground text-xs">Latitude</span>
-                  <p className="font-mono font-medium">{location.latitude.toFixed(6)}</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-2">
-                  <span className="text-muted-foreground text-xs">Longitude</span>
-                  <p className="font-mono font-medium">{location.longitude.toFixed(6)}</p>
-                </div>
-                {typeof location.accuracy === "number" && (
-                  <div className="col-span-2 bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground text-xs">Accuracy</span>
-                    <p className="font-medium">±{Math.round(location.accuracy)}m</p>
-                  </div>
-                )}
-              </div>
-            ) : locationError ? (
-              <p className="text-sm text-destructive">{locationError}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Waiting for GPS signal...</p>
-            )}
-
-            {/* Map Toggle */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => setShowMap(!showMap)}
-            >
-              <Navigation className="mr-2 w-4 h-4" />
-              {showMap ? "Hide Map" : "Show Map"}
-            </Button>
-
-            {/* Leaflet Map (visualization only) */}
-            {showMap && location && (
-              <div className="mt-2">
-                <GPSTracker
-                  currentLocation={{
-                    latitude: location.latitude,
-                    longitude: location.longitude,
-                    accuracy: location.accuracy,
-                    label: "Your Location",
-                  }}
-                  height="200px"
-                  useUserIcon={true}
-                />
-              </div>
-            )}
+            <Switch
+              id="monitoring-toggle"
+              checked={monitoringEnabled}
+              onCheckedChange={toggleMonitoring}
+            />
           </CardContent>
         </Card>
-
-        {/* Background Crash Detection */}
-        <MonitoringToggle showSimulate={true} />
 
         {/* Manual Emergency with SMS Status */}
         <Card className="border-2 border-emergency">
@@ -428,7 +359,7 @@ const Dashboard = () => {
               onClick={triggerSOS}
               size="lg"
               className="w-full bg-gradient-emergency shadow-emergency"
-              disabled={isSendingSMS}
+              disabled={isSendingSMS || !monitoringEnabled}
             >
               {isSendingSMS ? (
                 <>
@@ -442,7 +373,18 @@ const Dashboard = () => {
                 </>
               )}
             </Button>
-            
+
+            {!monitoringEnabled && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm">
+                <p className="font-medium text-yellow-700 dark:text-yellow-400">
+                  ⚠️ Emergency Monitoring is OFF
+                </p>
+                <p className="text-muted-foreground text-xs mt-1">
+                  Turn on the toggle above to enable the SOS button.
+                </p>
+              </div>
+            )}
+
             {/* SMS Error Banner */}
             {smsError && (
               <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm">
