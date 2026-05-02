@@ -3,32 +3,42 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, MapPin, RefreshCw, Navigation, MessageSquare } from "lucide-react";
-import MonitoringToggle from "@/components/MonitoringToggle";
+import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff } from "lucide-react";
 import { useSOSContext } from "@/contexts/SOSContext";
-import { useLocation } from "@/hooks/useLocation";
-import GPSTracker from "@/components/GPSTracker";
 import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  
-  const [showMap, setShowMap] = useState(false);
+  const [monitoringEnabled, setMonitoringEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("emergency_monitoring_enabled");
+    return stored === null ? true : stored === "true";
+  });
   const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [isSendingSMS, setIsSendingSMS] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { triggerSOS, setEmergencyHandler } = useSOSContext();
-  
-  // Live GPS tracking using the reusable hook
-  const { location, status, error: locationError, isLoading: isLocating, refresh: refreshLocation } = useLocation({
-    watch: true,
-    highAccuracy: true,
-  });
+
+  const toggleMonitoring = (next: boolean) => {
+    setMonitoringEnabled(next);
+    try {
+      localStorage.setItem("emergency_monitoring_enabled", String(next));
+    } catch {}
+    toast({
+      title: next ? "Emergency Monitoring ON" : "Emergency Monitoring OFF",
+      description: next
+        ? "SOS button is active. Guardians will be notified in an emergency."
+        : "SOS button is disabled. Turn monitoring back on to send alerts.",
+      variant: next ? "default" : "destructive",
+    });
+  };
 
   // Emergency handling logic with improved SMS tracking
   const handleEmergencyConfirmed = useCallback(async (emergencyLocation: { latitude: number; longitude: number }) => {
@@ -96,13 +106,10 @@ const Dashboard = () => {
 
     if (guardianList.length > 0) {
       console.log("[SMS] Sending emergency SMS to", guardianList.length, "guardian(s)");
-      
-      // Determine location source for logging/debugging
+
       const locationSource = emergencyLocation.latitude !== 0 && emergencyLocation.longitude !== 0
-        ? (status === "granted" ? "gps" : "fallback")
+        ? "gps"
         : "unavailable";
-      
-      console.log("[GPS] Location source for SMS:", locationSource);
 
       const smsResult = await sendEmergencySMS({
         emergencyId: emergency.id,
