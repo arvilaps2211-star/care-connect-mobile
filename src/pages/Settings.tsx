@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentPosition } from "@/utils/geolocation";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,11 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, User, Heart, Users, Shield, Loader2, MessageSquare, Plus, Trash2, Camera, MapPin, Bug } from "lucide-react";
+import { ArrowLeft, User, Heart, Users, Shield, Loader2, Plus, Trash2 } from "lucide-react";
 import ProfileImageCapture from "@/components/ProfileImageCapture";
-import SMSDiagnostic from "@/components/SMSDiagnostic";
-import LocationDebug from "@/components/LocationDebug";
-import NotificationTester from "@/components/NotificationTester";
 
 interface Guardian {
   id?: string;
@@ -27,9 +23,6 @@ interface Guardian {
 const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Test SMS
-  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Sheets
   const [personalOpen, setPersonalOpen] = useState(false);
