@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Heart } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import AppLogo from "@/components/AppLogo";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -108,8 +109,8 @@ const Auth = () => {
       {/* App Branding */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-8">
         <div className="text-center mb-8">
-          <div className="bg-white p-5 rounded-3xl shadow-2xl mb-4 inline-block">
-            <Heart className="w-12 h-12 text-red-500" />
+          <div className="bg-white p-3 rounded-3xl shadow-2xl mb-4 inline-block">
+            <AppLogo className="w-20 h-20" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">CareConnect</h1>
           <p className="text-white/80 text-lg">Your Personal Emergency Response</p>
