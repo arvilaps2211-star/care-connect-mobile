@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff } from "lucide-react";
+import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff, Phone as PhoneIcon, Smartphone } from "lucide-react";
 import { useSOSContext } from "@/contexts/SOSContext";
 import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
@@ -19,12 +19,19 @@ const Dashboard = () => {
     const stored = localStorage.getItem("emergency_monitoring_enabled");
     return stored === null ? true : stored === "true";
   });
+  const [shakeEnabled, setShakeEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem("shake_detection_enabled");
+    return stored === null ? true : stored === "true";
+  });
+  const [guardians, setGuardians] = useState<any[]>([]);
   const [lastSMSStatus, setLastSMSStatus] = useState<SMSStatus | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [isSendingSMS, setIsSendingSMS] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { triggerSOS, setEmergencyHandler } = useSOSContext();
+  const lastShakeRef = useRef<number>(0);
 
   const toggleMonitoring = (next: boolean) => {
     setMonitoringEnabled(next);
@@ -37,6 +44,15 @@ const Dashboard = () => {
         ? "SOS button is active. Guardians will be notified in an emergency."
         : "SOS button is disabled. Turn monitoring back on to send alerts.",
       variant: next ? "default" : "destructive",
+    });
+  };
+
+  const toggleShake = (next: boolean) => {
+    setShakeEnabled(next);
+    try { localStorage.setItem("shake_detection_enabled", String(next)); } catch {}
+    toast({
+      title: next ? "Shake Detection ON" : "Shake Detection OFF",
+      description: next ? "Strong phone shake will trigger SOS." : "Shake will no longer trigger SOS.",
     });
   };
 
@@ -261,12 +277,50 @@ const Dashboard = () => {
     }
 
     setProfile(profileData);
+
+    const { data: guardianData } = await supabase
+      .from("guardians")
+      .select("name, contact_number, relationship")
+      .eq("user_id", user.id);
+    setGuardians(guardianData || []);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  // --- SHAKE DETECTION (>15 m/s², 30s cooldown) ---
+  useEffect(() => {
+    if (!shakeEnabled || !monitoringEnabled) return;
+    if (typeof window === "undefined" || !("DeviceMotionEvent" in window)) return;
+
+    const handleMotion = (event: DeviceMotionEvent) => {
+      const a = event.accelerationIncludingGravity;
+      if (!a || a.x == null || a.y == null || a.z == null) return;
+      const magnitude = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+      if (magnitude > 25) {
+        // ~15 m/s² above gravity baseline (~9.8). Use 25 total to allow noise.
+        const now = Date.now();
+        if (now - lastShakeRef.current < 30000) return;
+        lastShakeRef.current = now;
+        toast({ title: "Shake detected!", description: "Sending SOS...", variant: "destructive" });
+        triggerSOS();
+      }
+    };
+
+    // iOS 13+ requires permission
+    const anyDM: any = (window as any).DeviceMotionEvent;
+    if (typeof anyDM?.requestPermission === "function") {
+      anyDM.requestPermission().then((res: string) => {
+        if (res === "granted") window.addEventListener("devicemotion", handleMotion);
+      }).catch(() => {});
+    } else {
+      window.addEventListener("devicemotion", handleMotion);
+    }
+
+    return () => window.removeEventListener("devicemotion", handleMotion);
+  }, [shakeEnabled, monitoringEnabled, triggerSOS, toast]);
 
 
   if (!profile) {
@@ -312,31 +366,34 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        {/* Emergency Monitoring Toggle */}
-        <Card className={monitoringEnabled ? "border-2 border-primary" : "border-2 border-muted"}>
-          <CardContent className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-3">
-              {monitoringEnabled ? (
-                <Bell className="w-5 h-5 text-primary" />
-              ) : (
-                <BellOff className="w-5 h-5 text-muted-foreground" />
-              )}
-              <div>
-                <Label htmlFor="monitoring-toggle" className="text-base font-semibold cursor-pointer">
-                  🔔 Emergency Monitoring
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {monitoringEnabled ? "SOS button is active" : "SOS button is disabled"}
-                </p>
+        {/* Toggles */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className={monitoringEnabled ? "border-2 border-primary" : "border-2 border-muted"}>
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                {monitoringEnabled ? <Bell className="w-5 h-5 text-primary" /> : <BellOff className="w-5 h-5 text-muted-foreground" />}
+                <div>
+                  <Label htmlFor="monitoring-toggle" className="text-base font-semibold cursor-pointer">🔔 Emergency Monitoring</Label>
+                  <p className="text-xs text-muted-foreground">{monitoringEnabled ? "SOS button is active" : "SOS button is disabled"}</p>
+                </div>
               </div>
-            </div>
-            <Switch
-              id="monitoring-toggle"
-              checked={monitoringEnabled}
-              onCheckedChange={toggleMonitoring}
-            />
-          </CardContent>
-        </Card>
+              <Switch id="monitoring-toggle" checked={monitoringEnabled} onCheckedChange={toggleMonitoring} />
+            </CardContent>
+          </Card>
+
+          <Card className={shakeEnabled ? "border-2 border-orange-500" : "border-2 border-muted"}>
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <Smartphone className={`w-5 h-5 ${shakeEnabled ? "text-orange-500" : "text-muted-foreground"}`} />
+                <div>
+                  <Label htmlFor="shake-toggle" className="text-base font-semibold cursor-pointer">📳 Shake Detection</Label>
+                  <p className="text-xs text-muted-foreground">{shakeEnabled ? "Shake phone hard to trigger SOS" : "Shake detection disabled"}</p>
+                </div>
+              </div>
+              <Switch id="shake-toggle" checked={shakeEnabled} onCheckedChange={toggleShake} />
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Manual Emergency with SMS Status */}
         <Card className="border-2 border-emergency">
@@ -438,6 +495,35 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Guardians */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <PhoneIcon className="w-4 h-4" /> Emergency Contacts
+            </CardTitle>
+            <CardDescription>{guardians.length} guardian{guardians.length === 1 ? "" : "s"} configured</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {guardians.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No guardians yet. Add one in Settings to receive SMS alerts.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {guardians.map((g, i) => (
+                  <li key={i} className="flex justify-between items-center text-sm border-b last:border-0 pb-2 last:pb-0">
+                    <div>
+                      <p className="font-medium">{g.name}</p>
+                      {g.relationship && <p className="text-xs text-muted-foreground">{g.relationship}</p>}
+                    </div>
+                    <a href={`tel:${g.contact_number}`} className="text-primary hover:underline">{g.contact_number}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Background crash detection is now handled by useCrashDetection hook inside MonitoringToggle */}

@@ -205,7 +205,7 @@ const HospitalLogin = () => {
       <div className="w-full max-w-lg">
         {/* Logo & Branding */}
          <div className="text-center mb-8">
-          <img src="/hospital-logo.png" alt="CareConnect Hospital Logo" className="w-20 h-20 mx-auto mb-4" width={512} height={512} />
+          <img src="/logo.png" alt="CareConnect Hospital Logo" className="w-20 h-20 mx-auto mb-4" width={512} height={512} />
           <h1 className="text-3xl font-bold text-white">CareConnect Hospitals</h1>
           <p className="text-slate-400 mt-2">Emergency Response Command Center</p>
         </div>

@@ -327,9 +327,7 @@ const AdminPanel = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <div className="bg-primary/20 p-2 rounded-full">
-              <Shield className="w-6 h-6 text-primary" />
-            </div>
+            <img src="/logo.png" alt="CareConnect" className="h-10 w-10" />
             <div>
               <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
               <p className="text-slate-400 text-sm">System administration dashboard</p>
