@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff, Phone as PhoneIcon, Smartphone } from "lucide-react";
+import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, BellOff, Phone as PhoneIcon, Smartphone } from "lucide-react";
 import { useSOSContext } from "@/contexts/SOSContext";
 import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
