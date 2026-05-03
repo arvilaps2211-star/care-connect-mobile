@@ -74,7 +74,9 @@ const STATUS_ORDER: DriverStatus[] = ["available", "en_route", "busy", "offline"
 
 const AmbulanceDriverDashboard = () => {
   const [searchParams] = useSearchParams();
-  const ambulanceId = searchParams.get("id") || localStorage.getItem("ambulance_id");
+  const [ambulanceId, setAmbulanceId] = useState<string | null>(
+    searchParams.get("id") || localStorage.getItem("ambulance_id")
+  );
   const [ambulanceInfo, setAmbulanceInfo] = useState<AmbulanceInfo | null>(null);
   const [dispatchedCases, setDispatchedCases] = useState<Emergency[]>([]);
   const [inTransitCases, setInTransitCases] = useState<Emergency[]>([]);
@@ -90,20 +92,38 @@ const AmbulanceDriverDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Track signed-in user (chat is only enabled for authenticated drivers)
+  // Track signed-in user. Auth is required; redirect to /ambulance-login if missing.
   useEffect(() => {
     let mounted = true;
+    const resolveAmbulance = async (userId: string) => {
+      const { data: amb } = await supabase
+        .from("ambulance_services")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (amb?.id) {
+        localStorage.setItem("ambulance_id", amb.id);
+        setAmbulanceId(amb.id);
+      }
+    };
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted) setAuthUserId(session?.user?.id ?? null);
+      if (!mounted) return;
+      if (!session?.user) {
+        navigate("/ambulance-login");
+        return;
+      }
+      setAuthUserId(session.user.id);
+      if (!ambulanceId) resolveAmbulance(session.user.id);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setAuthUserId(session?.user?.id ?? null);
+      if (!session?.user) navigate("/ambulance-login");
     });
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [navigate, ambulanceId]);
 
   // --- GPS Tracking ---
   const isGPSActive = driverStatus === "available" || driverStatus === "en_route";
@@ -146,8 +166,6 @@ const AmbulanceDriverDashboard = () => {
   // --- Init ---
   useEffect(() => {
     if (!ambulanceId) {
-      toast({ title: "Error", description: "No ambulance ID. Use ?id=<ambulance-id> in URL.", variant: "destructive" });
-      if (!import.meta.env.DEV) navigate("/ambulance/login");
       return;
     }
     localStorage.setItem("ambulance_id", ambulanceId);
