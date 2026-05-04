@@ -80,7 +80,7 @@ const AmbulanceDriverDashboard = () => {
   const [ambulanceInfo, setAmbulanceInfo] = useState<AmbulanceInfo | null>(null);
   const [dispatchedCases, setDispatchedCases] = useState<Emergency[]>([]);
   const [inTransitCases, setInTransitCases] = useState<Emergency[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [selectedEmergency, setSelectedEmergency] = useState<Emergency | null>(null);
