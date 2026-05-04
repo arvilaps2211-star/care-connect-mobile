@@ -295,17 +295,23 @@ const Dashboard = () => {
     if (!shakeEnabled || !monitoringEnabled) return;
     if (typeof window === "undefined" || !("DeviceMotionEvent" in window)) return;
 
+    let lastCalc = 0;
     const handleMotion = (event: DeviceMotionEvent) => {
-      const a = event.accelerationIncludingGravity;
-      if (!a || a.x == null || a.y == null || a.z == null) return;
-      const magnitude = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-      if (magnitude > 25) {
-        // ~15 m/s² above gravity baseline (~9.8). Use 25 total to allow noise.
+      try {
         const now = Date.now();
-        if (now - lastShakeRef.current < 30000) return;
-        lastShakeRef.current = now;
-        toast({ title: "Shake detected!", description: "Sending SOS...", variant: "destructive" });
-        triggerSOS();
+        if (now - lastCalc < 1000) return; // 1s debounce
+        lastCalc = now;
+        const a = event?.accelerationIncludingGravity;
+        if (!a || a.x == null || a.y == null || a.z == null) return;
+        const magnitude = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+        if (magnitude > 22) {
+          if (now - lastShakeRef.current < 30000) return;
+          lastShakeRef.current = now;
+          toast({ title: "Shake detected", description: "Sending SOS...", variant: "destructive" });
+          try { triggerSOS(); } catch (e) { console.error("[Shake] SOS failed", e); }
+        }
+      } catch (err) {
+        console.error("[Shake] handler error", err);
       }
     };
 

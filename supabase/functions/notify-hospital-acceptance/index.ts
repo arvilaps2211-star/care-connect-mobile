@@ -7,6 +7,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const MAX_SMS_LENGTH = 155;
+function truncateSms(msg: string): string {
+  if (!msg) return msg;
+  if (msg.length <= MAX_SMS_LENGTH) {
+    console.log(`[SMS] length=${msg.length} (ok)`);
+    return msg;
+  }
+  console.warn(`[SMS] length=${msg.length} TRUNCATING to ${MAX_SMS_LENGTH}`);
+  return msg.slice(0, MAX_SMS_LENGTH - 3) + "...";
+}
+
 interface HospitalAcceptanceRequest {
   emergencyId: string;
   hospitalId: string;
@@ -248,7 +259,7 @@ serve(async (req) => {
             body: new URLSearchParams({
               To: formattedPhone,
               From: twilioPhoneNumber,
-              Body: smsMessage,
+              Body: truncateSms(smsMessage),
             }),
           }
         );
