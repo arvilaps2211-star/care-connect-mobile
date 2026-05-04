@@ -145,15 +145,29 @@ const AmbulanceDriverDashboard = () => {
   const accuracyBg = getAccuracyBgColor(accuracyGrade);
 
   // --- Notification permission ---
+  const notificationsSupported = typeof window !== "undefined" && "Notification" in window;
   const requestNotificationPermission = async () => {
-    if (!("Notification" in window)) {
-      toast({ title: "Not Supported", description: "Push notifications are not supported in this browser", variant: "destructive" });
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      setNotificationsEnabled(true);
-      toast({ title: "Notifications Enabled", description: "You'll receive alerts for new dispatches" });
+    try {
+      if (!notificationsSupported) {
+        toast({ title: "Not Supported", description: "Notifications unavailable on this device", variant: "destructive" });
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        setNotificationsEnabled(true);
+        toast({ title: "Notifications Enabled", description: "You'll receive alerts for new dispatches" });
+        // Best-effort: register FCM token if available
+        try {
+          const { Capacitor } = await import("@capacitor/core");
+          if (Capacitor.isNativePlatform() && authUserId) {
+            const { initAmbulancePushNotifications } = await import("@/services/ambulanceNotificationService");
+            await initAmbulancePushNotifications({ ambulanceId: ambulanceId || "" });
+          }
+        } catch (e) { console.warn("[Push] init skipped", e); }
+      }
+    } catch (e: any) {
+      console.error("[Notif] permission error", e);
+      toast({ title: "Error", description: e?.message || "Failed to enable notifications", variant: "destructive" });
     }
   };
 
@@ -554,15 +568,15 @@ const AmbulanceDriverDashboard = () => {
               )}
 
               {/* Notifications */}
-              {!notificationsEnabled ? (
+              {notificationsSupported && !notificationsEnabled ? (
                 <Button variant="outline" size="sm" onClick={requestNotificationPermission} className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10 h-8 text-xs">
                   <BellOff className="w-3 h-3 mr-1" />Alerts
                 </Button>
-              ) : (
+              ) : notificationsEnabled ? (
                 <div className="flex items-center gap-1 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                   <Bell className="w-3 h-3 text-emerald-400" />
                 </div>
-              )}
+              ) : null}
 
               {/* Status Toggle */}
               <Button onClick={cycleStatus} variant="outline" className={`h-8 px-3 text-xs border ${statusConf.bgColor} ${statusConf.color} hover:opacity-80`}>
@@ -571,7 +585,7 @@ const AmbulanceDriverDashboard = () => {
               </Button>
 
               {/* Logout */}
-              <Button variant="ghost" size="sm" onClick={() => { localStorage.removeItem("ambulance_id"); navigate("/ambulance/login"); }} className="text-slate-400 hover:text-white h-8">
+              <Button variant="ghost" size="sm" onClick={async () => { try { await supabase.auth.signOut(); } catch {} localStorage.removeItem("ambulance_id"); navigate("/ambulance-login"); }} className="text-slate-400 hover:text-white h-8">
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
