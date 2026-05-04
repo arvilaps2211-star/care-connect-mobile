@@ -153,10 +153,22 @@ export const setupPushNotificationListeners = (): void => {
 
   console.log('[Push] Setting up notification listeners...');
 
-  // On registration success
-  PushNotifications.addListener('registration', (token) => {
-    console.log('[Push] Registration token:', token.value);
-    // TODO: Send this token to your backend for sending push notifications
+  // On registration success — store token in fcm_tokens
+  PushNotifications.addListener('registration', async (token) => {
+    console.log('[Push] Registration token received');
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) { console.warn('[Push] no user, token not stored'); return; }
+      const { error } = await supabase.from('fcm_tokens').upsert({
+        user_id: userId,
+        token: token.value,
+        device_type: Capacitor.getPlatform(),
+      }, { onConflict: 'user_id' });
+      if (error) console.error('[Push] token store failed', error.message);
+      else console.log('[Push] token stored');
+    } catch (e) { console.error('[Push] token store error', e); }
   });
 
   // On registration error
