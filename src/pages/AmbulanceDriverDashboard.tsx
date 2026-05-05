@@ -620,9 +620,10 @@ const AmbulanceDriverDashboard = () => {
                       toast({ title: "Battery", description: "Native-only feature." });
                       return;
                     }
-                    const { App } = await import("@capacitor/app");
-                    await (App as any).openUrl?.({ url: "package:" + ((await (App as any).getInfo?.())?.id ?? "") }).catch(() => {});
-                    toast({ title: "Battery", description: "Open Settings → Battery → Unrestricted." });
+                    toast({
+                      title: "Battery whitelist",
+                      description: "Open Android Settings → Apps → CareConnect → Battery → set to Unrestricted to keep background tracking alive.",
+                    });
                   } catch {
                     toast({ title: "Battery", description: "Open Settings → Battery → Unrestricted." });
                   }
