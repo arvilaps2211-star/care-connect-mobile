@@ -45,17 +45,33 @@ const EmergencyChat = ({
   const [unread, setUnread] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load history + subscribe to realtime
+  // Load history + subscribe to realtime, with polling fallback
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let realtimeOk = false;
+
+    const loadHistory = async () => {
       const { data } = await supabase
         .from("emergency_messages")
         .select("*")
         .eq("emergency_id", emergencyId)
         .order("created_at", { ascending: true });
-      if (mounted && data) setMessages(data as Message[]);
-    })();
+      if (mounted && data) {
+        setMessages((prev) => {
+          if (prev.length === data.length) return prev;
+          // detect new for unread
+          const incoming = data as Message[];
+          const newOnes = incoming.slice(prev.length);
+          newOnes.forEach((m) => {
+            if (m.sender_id !== myUserId && !open) setUnread((n) => n + 1);
+          });
+          return incoming;
+        });
+      }
+    };
+
+    loadHistory();
 
     const channel = supabase
       .channel(`emergency_chat_${emergencyId}`)
@@ -69,16 +85,42 @@ const EmergencyChat = ({
         },
         (payload) => {
           const msg = payload.new as Message;
-          setMessages((prev) => [...prev, msg]);
-          if (msg.sender_id !== myUserId && (!open)) {
+          setMessages((prev) =>
+            prev.some((p) => p.id === msg.id) ? prev : [...prev, msg]
+          );
+          if (msg.sender_id !== myUserId && !open) {
             setUnread((n) => n + 1);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[Chat] Realtime status (${emergencyId}):`, status);
+        if (status === "SUBSCRIBED") {
+          realtimeOk = true;
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!pollTimer) {
+            console.warn("[Chat] Realtime unavailable - falling back to 5s polling");
+            pollTimer = setInterval(loadHistory, 5000);
+          }
+        }
+      });
+
+    // Safety: if realtime not subscribed within 5s, start polling
+    const safetyTimer = setTimeout(() => {
+      if (!realtimeOk && !pollTimer) {
+        console.warn("[Chat] Realtime didn't subscribe - starting polling");
+        pollTimer = setInterval(loadHistory, 5000);
+      }
+    }, 5000);
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
+      if (pollTimer) clearInterval(pollTimer);
       supabase.removeChannel(channel);
     };
   }, [emergencyId, myUserId, open]);
