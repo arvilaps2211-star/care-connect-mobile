@@ -38,6 +38,19 @@ const Dashboard = () => {
     try {
       localStorage.setItem("emergency_monitoring_enabled", String(next));
     } catch {}
+    // One-time battery whitelist prompt when monitoring first enabled
+    if (next) {
+      try {
+        const shown = localStorage.getItem("battery_prompt_shown");
+        if (!shown) {
+          localStorage.setItem("battery_prompt_shown", "1");
+          toast({
+            title: "Keep monitoring alive",
+            description: "Disable battery optimization for CareConnect: Settings → Apps → CareConnect → Battery → Unrestricted.",
+          });
+        }
+      } catch {}
+    }
     toast({
       title: next ? "Emergency Monitoring ON" : "Emergency Monitoring OFF",
       description: next
