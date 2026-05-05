@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   LogOut, AlertCircle, MapPin, Phone, User, Heart, Navigation,
   Activity, CheckCircle, X, Truck, Clock, Bell, BellOff, Timer, Users,
-  Wifi, WifiOff, Power, CircleDot
+  Wifi, WifiOff, Power, CircleDot, Send, BatteryCharging
 } from "lucide-react";
 import GPSTracker from "@/components/GPSTracker";
 import { calculateETA, getETAStatus } from "@/utils/eta";
@@ -582,6 +582,54 @@ const AmbulanceDriverDashboard = () => {
               <Button onClick={cycleStatus} variant="outline" className={`h-8 px-3 text-xs border ${statusConf.bgColor} ${statusConf.color} hover:opacity-80`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
                 {statusConf.label}
+              </Button>
+
+              {/* Test push */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                onClick={async () => {
+                  try {
+                    const { data, error } = await supabase.functions.invoke("send-push", {
+                      body: {
+                        title: "🚨 Test Push",
+                        body: "Driver test push from dashboard",
+                        userIds: authUserId ? [authUserId] : undefined,
+                      },
+                    });
+                    if (error) throw error;
+                    toast({ title: "Push sent", description: `target=${data?.total ?? 0}, sent=${data?.sent ?? 0}` });
+                  } catch (e: any) {
+                    toast({ title: "Push failed", description: e?.message, variant: "destructive" });
+                  }
+                }}
+              >
+                <Send className="w-3 h-3 mr-1" />Test Push
+              </Button>
+
+              {/* Battery whitelist */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                onClick={async () => {
+                  try {
+                    const { Capacitor } = await import("@capacitor/core");
+                    if (!Capacitor.isNativePlatform()) {
+                      toast({ title: "Battery", description: "Native-only feature." });
+                      return;
+                    }
+                    toast({
+                      title: "Battery whitelist",
+                      description: "Open Android Settings → Apps → CareConnect → Battery → set to Unrestricted to keep background tracking alive.",
+                    });
+                  } catch {
+                    toast({ title: "Battery", description: "Open Settings → Battery → Unrestricted." });
+                  }
+                }}
+              >
+                <BatteryCharging className="w-3 h-3 mr-1" />Battery
               </Button>
 
               {/* Logout */}

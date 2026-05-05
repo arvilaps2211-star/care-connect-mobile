@@ -40,8 +40,17 @@ export interface SMSSendResponse {
 }
 
 // Configuration
-const MAX_RETRIES = 1;
-const RETRY_DELAY_MS = 2000;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000; // 1s, 2s, 4s exponential backoff
+
+// Persist last SMS attempt for debug page
+function recordSmsAttempt(entry: Record<string, any>) {
+  try {
+    if (typeof window === "undefined") return;
+    const payload = { ...entry, ts: new Date().toISOString() };
+    localStorage.setItem("careconnect_last_sms_attempt", JSON.stringify(payload));
+  } catch {}
+}
 
 // Check if we're in development/simulation mode
 const isDevMode = (): boolean => {
@@ -175,10 +184,21 @@ export async function sendEmergencySMS(params: {
       smsDiag.failed(response.error || "Unknown error");
     }
 
-    // Retry logic: if failed and haven't exceeded retries, try again
+    recordSmsAttempt({
+      kind: "emergency",
+      emergencyId: params.emergencyId,
+      attempt: retryAttempt + 1,
+      success: response.success,
+      status: response.status,
+      summary: response.summary,
+      error: response.error,
+    });
+
+    // Retry with exponential backoff: 1s, 2s, 4s
     if (!response.success && retryAttempt < MAX_RETRIES) {
-      console.log(`[SMS] Scheduling retry in ${RETRY_DELAY_MS}ms...`);
-      await delay(RETRY_DELAY_MS);
+      const wait = RETRY_BASE_DELAY_MS * Math.pow(2, retryAttempt);
+      console.log(`[SMS] Retry ${retryAttempt + 1}/${MAX_RETRIES} in ${wait}ms`);
+      await delay(wait);
       return sendEmergencySMS(params, retryAttempt + 1);
     }
 
@@ -186,10 +206,17 @@ export async function sendEmergencySMS(params: {
   } catch (err: any) {
     console.error("[SMS] Exception during send:", err);
     
-    // Retry on exception if haven't exceeded retries
+    recordSmsAttempt({
+      kind: "emergency",
+      emergencyId: params.emergencyId,
+      attempt: retryAttempt + 1,
+      success: false,
+      error: err?.message,
+    });
     if (retryAttempt < MAX_RETRIES) {
-      console.log(`[SMS] Exception - scheduling retry in ${RETRY_DELAY_MS}ms...`);
-      await delay(RETRY_DELAY_MS);
+      const wait = RETRY_BASE_DELAY_MS * Math.pow(2, retryAttempt);
+      console.log(`[SMS] Exception retry ${retryAttempt + 1}/${MAX_RETRIES} in ${wait}ms`);
+      await delay(wait);
       return sendEmergencySMS(params, retryAttempt + 1);
     }
     

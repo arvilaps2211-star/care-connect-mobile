@@ -16,6 +16,7 @@ import HospitalDashboard from "./pages/HospitalDashboard";
 import AdminPanel from "./pages/AdminPanel";
 import AmbulanceLogin from "./pages/AmbulanceLogin";
 import AdminLogin from "./pages/AdminLogin";
+import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
@@ -104,6 +105,7 @@ const WebRoutes = () => (
       </ProtectedRoute>
     } />
     <Route path="/admin-login" element={<AdminLogin />} />
+    <Route path="/debug" element={<Debug />} />
 
     {/* Ambulance */}
     <Route path="/ambulance/login" element={<AmbulanceLogin />} />
@@ -159,6 +161,7 @@ const MobileRoutes = () => (
         </ProtectedRoute>
       } />
       <Route path="/admin-login" element={<AdminLogin />} />
+      <Route path="/debug" element={<Debug />} />
       <Route path="/ambulance/login" element={<AmbulanceLogin />} />
       <Route path="/ambulance-login" element={<AmbulanceLogin />} />
       <Route path="/ambulance/driver" element={<AmbulanceDriverDashboard />} />
@@ -175,6 +178,7 @@ const MobileRoutes = () => (
  */
 const AmbulanceAppRoutes = () => (
   <Routes>
+    <Route path="/debug" element={<Debug />} />
     <Route path="*" element={<AmbulanceDriverDashboard />} />
   </Routes>
 );
