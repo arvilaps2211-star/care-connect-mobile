@@ -323,6 +323,11 @@ const AdminPanel = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {import.meta.env.VITE_DEV_MODE === "true" && (
+        <div className="bg-yellow-400 text-yellow-950 text-center text-sm font-semibold py-2 px-4 border-b border-yellow-600">
+          ⚠️ DEV MODE — Admin Authentication Disabled
+        </div>
+      )}
       <div className="container mx-auto p-4 md:p-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
