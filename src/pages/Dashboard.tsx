@@ -10,6 +10,7 @@ import { AlertCircle, Heart, LogOut, Settings, RefreshCw, MessageSquare, Bell, B
 import { useSOSContext } from "@/contexts/SOSContext";
 import { sendEmergencySMS, type SMSStatus } from "@/utils/smsService";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
+import LockScreenSOS from "@/plugins/lockScreenSOS";
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
@@ -321,6 +322,7 @@ const Dashboard = () => {
           if (now - lastShakeRef.current < 30000) return;
           lastShakeRef.current = now;
           toast({ title: "Shake detected", description: "Sending SOS...", variant: "destructive" });
+          try { LockScreenSOS.wakeScreen(); } catch {}
           try { triggerSOS(); } catch (e) { console.error("[Shake] SOS failed", e); }
         }
       } catch (err) {
@@ -340,6 +342,27 @@ const Dashboard = () => {
 
     return () => window.removeEventListener("devicemotion", handleMotion);
   }, [shakeEnabled, monitoringEnabled, triggerSOS, toast]);
+
+  // --- Background lock-screen monitoring service ---
+  useEffect(() => {
+    if (monitoringEnabled) {
+      LockScreenSOS.startBackgroundMonitoring().catch(() => {});
+    } else {
+      LockScreenSOS.stopBackgroundMonitoring().catch(() => {});
+    }
+  }, [monitoringEnabled]);
+
+  // --- Volume-button SOS bridge from native MainActivity ---
+  useEffect(() => {
+    if (!monitoringEnabled) return;
+    const handler = () => {
+      toast({ title: "Volume SOS", description: "Sending SOS...", variant: "destructive" });
+      try { LockScreenSOS.wakeScreen(); } catch {}
+      try { triggerSOS(); } catch (e) { console.error("[VolumeSOS] failed", e); }
+    };
+    window.addEventListener("careconnect:volumeSOS", handler);
+    return () => window.removeEventListener("careconnect:volumeSOS", handler);
+  }, [monitoringEnabled, triggerSOS, toast]);
 
 
   if (!profile) {
