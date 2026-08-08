@@ -21,6 +21,7 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
+    path: 'native/android-user',
   },
 };
 
