@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Heart } from "lucide-react";
+import AppLogo from "@/components/AppLogo";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -34,14 +34,14 @@ const SplashScreen = ({ onComplete, minDuration = 2000 }: SplashScreenProps) => 
         
         {/* Main logo */}
         <div 
-          className={`relative bg-white p-6 rounded-3xl shadow-2xl transform transition-all duration-700 ${
+          className={`relative bg-white p-5 rounded-3xl shadow-2xl overflow-hidden transform transition-all duration-700 ${
             isExiting ? "scale-150 opacity-0" : "scale-100 opacity-100"
           }`}
           style={{
             animation: !isExiting ? "splash-bounce 0.8s ease-out" : undefined,
           }}
         >
-          <Heart className="w-16 h-16 text-red-500 animate-pulse" />
+          <AppLogo className="w-20 h-20 rounded-2xl" />
         </div>
       </div>
 
