@@ -14,6 +14,7 @@ const Index = () => {
   }, []);
 
   const checkAuth = async () => {
+    try {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
@@ -22,19 +23,30 @@ const Index = () => {
       return;
     }
 
-    // Check user role
-    const { data: role } = await supabase
+    // Check user role (an account can have multiple rows — never use .single())
+    let { data: roleRows } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", session.user.id)
-      .maybeSingle();
+      .eq("user_id", session.user.id);
 
-    if (role) {
-      if (role.role === "admin") {
+    // Self-heal: accounts created before role bootstrapping have no row
+    if (!roleRows || roleRows.length === 0) {
+      await supabase.rpc("ensure_default_role");
+      const retry = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id);
+      roleRows = retry.data ?? [];
+    }
+
+    const roles = (roleRows ?? []).map((r: any) => r.role as string);
+
+    if (roles.length > 0) {
+      if (roles.includes("admin")) {
         setTargetRoute("/admin");
         setAuthCheckComplete(true);
         return;
-      } else if (role.role === "hospital") {
+      } else if (roles.includes("hospital")) {
         setTargetRoute("/hospital");
         setAuthCheckComplete(true);
         return;
@@ -45,7 +57,7 @@ const Index = () => {
       .from("profiles")
       .select("onboarding_completed")
       .eq("user_id", session.user.id)
-      .single();
+      .maybeSingle();
 
     if (profile?.onboarding_completed) {
       setTargetRoute("/dashboard");
@@ -53,6 +65,12 @@ const Index = () => {
       setTargetRoute("/onboarding");
     }
     setAuthCheckComplete(true);
+    } catch (e) {
+      // Never leave the splash hanging on a network/database hiccup
+      console.warn("[Index] Auth check failed, falling back to /auth", e);
+      setTargetRoute("/auth");
+      setAuthCheckComplete(true);
+    }
   };
 
   const handleSplashComplete = () => {

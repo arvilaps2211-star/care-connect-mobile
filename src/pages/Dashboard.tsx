@@ -126,7 +126,7 @@ const Dashboard = () => {
       .from("medical_info")
       .select("*")
       .eq("user_id", currentUser.id)
-      .single();
+      .maybeSingle();
 
     // Send SMS notification using the SMS service
     const guardianList = (guardians || []).map((g: any) => ({

@@ -37,27 +37,41 @@ export const useAuth = (options: UseAuthOptions = {}) => {
   const { toast } = useToast();
 
   const checkRole = useCallback(async (userId: string): Promise<{ role: AppRole | null; error: string | null }> => {
+    const priority: AppRole[] = ["admin", "hospital", "ambulance", "user"];
+    const pick = (rows: { role: string }[] | null): AppRole | null => {
+      const roles = (rows ?? []).map((r) => r.role as AppRole);
+      return priority.find((p) => roles.includes(p)) ?? null;
+    };
+
     try {
       console.log("[AUTH] Checking role for user:", userId);
       
+      // An account can legitimately have multiple role rows — never use .single()
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", userId)
-        .maybeSingle(); // Use maybeSingle to avoid errors when no role exists
+        .eq("user_id", userId);
 
       if (error) {
         console.warn("[ROLE] Error fetching role:", error.message);
         return { role: "user", error: error.message };
       }
 
-      if (!data) {
-        console.log("[ROLE] No role found for user, defaulting to 'user'");
-        return { role: "user", error: null };
+      let resolved = pick(data);
+
+      if (!resolved) {
+        // Self-heal accounts that were created without a role row
+        console.log("[ROLE] No role found, bootstrapping default role");
+        await supabase.rpc("ensure_default_role");
+        const retry = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId);
+        resolved = pick(retry.data) ?? "user";
       }
 
-      console.log("[ROLE] Found role:", data.role);
-      return { role: data.role as AppRole, error: null };
+      console.log("[ROLE] Resolved role:", resolved);
+      return { role: resolved, error: null };
     } catch (error: any) {
       console.error("[AUTH] Exception checking role:", error);
       return { role: "user", error: error.message };
