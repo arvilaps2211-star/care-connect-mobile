@@ -228,7 +228,7 @@ const AmbulanceDriverDashboard = () => {
       return Promise.all(
         (emergencies || []).map(async (emergency) => {
           const [profileRes, medicalRes, guardiansRes] = await Promise.all([
-            supabase.from("profiles").select("name, phone, age, gender, address, profile_photo_url").eq("user_id", emergency.user_id).single(),
+            supabase.from("profiles").select("name, phone, age, gender, address, profile_photo_url").eq("user_id", emergency.user_id).maybeSingle(),
             supabase.from("medical_info").select("blood_group, medical_history, additional_notes").eq("user_id", emergency.user_id),
             supabase.from("guardians").select("id, name, relationship, contact_number").eq("user_id", emergency.user_id),
           ]);
