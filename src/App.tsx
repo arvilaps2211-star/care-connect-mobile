@@ -35,8 +35,6 @@ const isWebDevMode = import.meta.env.DEV && !isNativePlatform();
 // Detect if this is the standalone ambulance app build
 const isAmbulanceApp = import.meta.env.VITE_APP_TYPE === "ambulance";
 
-// DEV MODE: bypass admin authentication (local dev only).
-const isDevMode = import.meta.env.VITE_DEV_MODE === "true";
 
 // Global SOS Overlay wrapper - ONLY for mobile mode
 const GlobalSOSWrapper = () => {
@@ -103,20 +101,16 @@ const WebRoutes = () => (
 
     {/* Admin */}
     <Route path="/admin" element={
-      isDevMode ? <AdminPanel /> : (
-        <ProtectedRoute requiredRole="admin" redirectTo="/hospital/login">
+      <ProtectedRoute requiredRole="admin" redirectTo="/admin-login">
           <AdminPanel />
         </ProtectedRoute>
-      )
     } />
     <Route path="/admin-panel" element={
-      isDevMode ? <AdminPanel /> : (
-        <ProtectedRoute requiredRole="admin" redirectTo="/hospital/login">
+      <ProtectedRoute requiredRole="admin" redirectTo="/admin-login">
           <AdminPanel />
         </ProtectedRoute>
-      )
     } />
-    <Route path="/admin-login" element={isDevMode ? <AdminPanel /> : <AdminLogin />} />
+    <Route path="/admin-login" element={<AdminLogin />} />
     <Route path="/debug" element={<Debug />} />
 
     {/* Ambulance */}
@@ -168,20 +162,16 @@ const MobileRoutes = () => (
         </ProtectedRoute>
       } />
       <Route path="/admin" element={
-        isDevMode ? <AdminPanel /> : (
-          <ProtectedRoute requiredRole="admin" redirectTo="/auth">
+        <ProtectedRoute requiredRole="admin" redirectTo="/admin-login">
             <AdminPanel />
           </ProtectedRoute>
-        )
       } />
       <Route path="/admin-panel" element={
-        isDevMode ? <AdminPanel /> : (
-          <ProtectedRoute requiredRole="admin" redirectTo="/auth">
+        <ProtectedRoute requiredRole="admin" redirectTo="/admin-login">
             <AdminPanel />
           </ProtectedRoute>
-        )
       } />
-      <Route path="/admin-login" element={isDevMode ? <AdminPanel /> : <AdminLogin />} />
+      <Route path="/admin-login" element={<AdminLogin />} />
       <Route path="/debug" element={<Debug />} />
       <Route path="/ambulance/login" element={<AmbulanceLogin />} />
       <Route path="/ambulance-login" element={<AmbulanceLogin />} />
