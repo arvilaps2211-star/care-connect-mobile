@@ -30,10 +30,13 @@ const AdminLogin = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      // Clear any other signed-in account (e.g. a patient) so it can't block admin access
+      await supabase.auth.signOut();
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw new Error(/invalid/i.test(error.message) ? "Incorrect email or password." : error.message);
 
       const { data: role } = await supabase
         .from("user_roles").select("role")

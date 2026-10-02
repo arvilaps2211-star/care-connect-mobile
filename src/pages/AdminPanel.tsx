@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,745 +6,524 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Hospital, Ambulance, Trash2, Activity, Users, AlertTriangle, CheckCircle, BarChart3, Shield, Clock, MessageSquare, MapPin } from "lucide-react";
+import {
+  LogOut, Hospital, Ambulance, Trash2, Activity, Users, AlertTriangle, CheckCircle, BarChart3,
+  Shield, Clock, MessageSquare, MapPin, RefreshCw, Search, Loader2, ExternalLink,
+} from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SMSStatusBadge } from "@/components/SMSStatusBadge";
 
 interface Emergency {
   id: string;
-  user_id: string;
-  status: string;
+  status: string | null;
   latitude: number | null;
   longitude: number | null;
-  created_at: string;
+  created_at: string | null;
   notified_at: string | null;
-  guardian_notified: boolean;
+  guardian_notified: boolean | null;
   accepted_by_hospital: string | null;
   dispatched_to_ambulance: string | null;
 }
-
-interface Stats {
-  totalEmergencies: number;
-  activeEmergencies: number;
-  resolvedEmergencies: number;
-  totalHospitals: number;
-  totalAmbulances: number;
-  totalUsers: number;
+interface Place {
+  id: string;
+  name: string;
+  contact_number: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string | null;
 }
+type StatKey = "totalEmergencies" | "activeEmergencies" | "resolvedEmergencies" | "totalHospitals" | "totalAmbulances" | "totalUsers";
+type Stats = Record<StatKey, number | null>;
+
+const EMERGENCY_LIMIT = 100;
+const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleString() : "—");
+const fmtCoord = (lat: number | null, lng: number | null) =>
+  lat != null && lng != null ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}` : null;
+const mapUrl = (lat: number, lng: number) => `https://www.google.com/maps?q=${lat},${lng}`;
+
+const TableSkeleton = () => (
+  <div className="space-y-2 py-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+);
+const ErrorState = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
+  <div className="text-center py-8 space-y-3">
+    <p className="text-destructive text-sm">Couldn't load data: {message}</p>
+    <Button variant="outline" size="sm" onClick={onRetry}><RefreshCw className="w-4 h-4 mr-2" />Retry</Button>
+  </div>
+);
 
 const AdminPanel = () => {
-  const [hospitals, setHospitals] = useState<any[]>([]);
-  const [ambulances, setAmbulances] = useState<any[]>([]);
-  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
-  const [stats, setStats] = useState<Stats>({
-    totalEmergencies: 0,
-    activeEmergencies: 0,
-    resolvedEmergencies: 0,
-    totalHospitals: 0,
-    totalAmbulances: 0,
-    totalUsers: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [loadingEmergencies, setLoadingEmergencies] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Auth is handled by ProtectedRoute - just fetch data
-    console.log("[ADMIN] Initializing admin panel...");
-    fetchData();
-    fetchStats();
-    fetchEmergencies();
+  const [stats, setStats] = useState<Stats>({
+    totalEmergencies: null, activeEmergencies: null, resolvedEmergencies: null,
+    totalHospitals: null, totalAmbulances: null, totalUsers: null,
+  });
+  const [statsWarning, setStatsWarning] = useState<string | null>(null);
+
+  const [hospitals, setHospitals] = useState<Place[]>([]);
+  const [ambulances, setAmbulances] = useState<Place[]>([]);
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
+  const [loading, setLoading] = useState({ hospitals: true, ambulances: true, emergencies: true });
+  const [errors, setErrors] = useState<{ hospitals?: string; ambulances?: string; emergencies?: string }>({});
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [hospitalSearch, setHospitalSearch] = useState("");
+  const [ambulanceSearch, setAmbulanceSearch] = useState("");
+  const [emergencySearch, setEmergencySearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+
+  const [pendingDelete, setPendingDelete] = useState<{ type: "hospital" | "ambulance"; item: Place } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [submitting, setSubmitting] = useState<"hospital" | "ambulance" | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    const queries: [StatKey, any][] = [
+      ["totalEmergencies", supabase.from("emergencies").select("id", { count: "exact", head: true })],
+      ["activeEmergencies", supabase.from("emergencies").select("id", { count: "exact", head: true }).eq("status", "active")],
+      ["resolvedEmergencies", supabase.from("emergencies").select("id", { count: "exact", head: true }).in("status", ["resolved", "closed"])],
+      ["totalHospitals", supabase.from("hospitals").select("id", { count: "exact", head: true })],
+      ["totalAmbulances", supabase.from("ambulance_services").select("id", { count: "exact", head: true })],
+      ["totalUsers", supabase.from("profiles").select("id", { count: "exact", head: true })],
+    ];
+    const results = await Promise.allSettled(queries.map(([, q]) => q));
+    const failed: string[] = [];
+    setStats((prev) => {
+      const next = { ...prev };
+      results.forEach((r, i) => {
+        const key = queries[i][0];
+        if (r.status === "fulfilled" && !r.value.error) next[key] = r.value.count ?? 0;
+        else failed.push(key);
+      });
+      return next;
+    });
+    setStatsWarning(failed.length ? "Some statistics couldn't be loaded and may be out of date." : null);
   }, []);
 
-  const fetchStats = async () => {
+  const fetchPlaces = useCallback(async (kind: "hospitals" | "ambulances") => {
+    setLoading((l) => ({ ...l, [kind]: true }));
+    const table = kind === "hospitals" ? "hospitals" : "ambulance_services";
     try {
-      console.log("[ADMIN] Fetching stats...");
-      
-      // Fetch emergency counts with individual error handling
-      const [emergencyRes, activeRes, resolvedRes, hospitalRes, ambulanceRes, userRes] = await Promise.all([
-        supabase.from("emergencies").select("*", { count: "exact", head: true }),
-        supabase.from("emergencies").select("*", { count: "exact", head: true }).eq("status", "active"),
-        supabase.from("emergencies").select("*", { count: "exact", head: true }).in("status", ["resolved", "closed"]),
-        supabase.from("hospitals").select("*", { count: "exact", head: true }),
-        supabase.from("ambulance_services").select("*", { count: "exact", head: true }),
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-      ]);
-
-      // Log any errors but don't crash
-      if (emergencyRes.error) console.warn("[ADMIN] Error fetching emergencies:", emergencyRes.error.message);
-      if (activeRes.error) console.warn("[ADMIN] Error fetching active emergencies:", activeRes.error.message);
-      if (resolvedRes.error) console.warn("[ADMIN] Error fetching resolved emergencies:", resolvedRes.error.message);
-      if (hospitalRes.error) console.warn("[ADMIN] Error fetching hospitals:", hospitalRes.error.message);
-      if (ambulanceRes.error) console.warn("[ADMIN] Error fetching ambulances:", ambulanceRes.error.message);
-      if (userRes.error) console.warn("[ADMIN] Error fetching users:", userRes.error.message);
-
-      setStats({
-        totalEmergencies: emergencyRes.count || 0,
-        activeEmergencies: activeRes.count || 0,
-        resolvedEmergencies: resolvedRes.count || 0,
-        totalHospitals: hospitalRes.count || 0,
-        totalAmbulances: ambulanceRes.count || 0,
-        totalUsers: userRes.count || 0,
-      });
-      
-      console.log("[ADMIN] Stats loaded successfully");
-    } catch (error: any) {
-      console.error("[ADMIN] Exception fetching stats:", error?.message || error);
+      const { data, error } = await supabase
+        .from(table)
+        .select("id, name, contact_number, latitude, longitude, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      (kind === "hospitals" ? setHospitals : setAmbulances)((data as Place[]) ?? []);
+      setErrors((e) => ({ ...e, [kind]: undefined }));
+    } catch (e: any) {
+      setErrors((er) => ({ ...er, [kind]: e?.message || "Unknown error" }));
+    } finally {
+      setLoading((l) => ({ ...l, [kind]: false }));
     }
-  };
+  }, []);
 
-  const fetchEmergencies = async () => {
-    setLoadingEmergencies(true);
+  const fetchEmergencies = useCallback(async () => {
+    setLoading((l) => ({ ...l, emergencies: true }));
     try {
-      console.log("[ADMIN] Fetching emergencies...");
-      
-      // Fetch emergencies (NO patient medical/guardian data - privacy)
-      const { data: emergencyData, error: emergencyError } = await supabase
+      // Privacy: no patient, medical or guardian fields
+      const { data, error } = await supabase
         .from("emergencies")
-        .select("id, user_id, status, latitude, longitude, created_at, notified_at, guardian_notified, accepted_by_hospital, dispatched_to_ambulance")
+        .select("id, status, latitude, longitude, created_at, notified_at, guardian_notified, accepted_by_hospital, dispatched_to_ambulance")
         .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (emergencyError) {
-        console.warn("[ADMIN] Error fetching emergencies:", emergencyError.message);
-      }
-
-      setEmergencies(emergencyData || []);
-      console.log("[ADMIN] Emergencies loaded:", emergencyData?.length || 0);
-    } catch (error: any) {
-      console.error("[ADMIN] Exception fetching emergencies:", error?.message || error);
-      setEmergencies([]);
+        .limit(EMERGENCY_LIMIT);
+      if (error) throw error;
+      setEmergencies((data as Emergency[]) ?? []);
+      setErrors((e) => ({ ...e, emergencies: undefined }));
+    } catch (e: any) {
+      setErrors((er) => ({ ...er, emergencies: e?.message || "Unknown error" }));
     } finally {
-      setLoadingEmergencies(false);
+      setLoading((l) => ({ ...l, emergencies: false }));
     }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([fetchStats(), fetchPlaces("hospitals"), fetchPlaces("ambulances"), fetchEmergencies()]);
+    setLastUpdated(new Date());
+    setRefreshing(false);
+  }, [fetchStats, fetchPlaces, fetchEmergencies]);
+
+  useEffect(() => { refreshAll(); }, [refreshAll]);
+
+  const filterPlaces = (list: Place[], q: string) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return list;
+    return list.filter((p) => p.name?.toLowerCase().includes(s) || (p.contact_number ?? "").toLowerCase().includes(s));
   };
-
-  const fetchData = async () => {
-    setLoading(true);
-    
-    try {
-      console.log("[ADMIN] Fetching data...");
-      
-      // Fetch hospitals with verification status (NO patient data)
-      const { data: hospitalsData, error: hospitalError } = await supabase
-        .from("hospitals")
-        .select("id, name, contact_number, latitude, longitude, created_at");
-
-      if (hospitalError) {
-        console.warn("[ADMIN] Error fetching hospitals:", hospitalError.message);
-      }
-
-      // Fetch ambulances (NO patient/guardian data)
-      const { data: ambulancesData, error: ambulanceError } = await supabase
-        .from("ambulance_services")
-        .select("id, name, contact_number, latitude, longitude, created_at");
-
-      if (ambulanceError) {
-        console.warn("[ADMIN] Error fetching ambulances:", ambulanceError.message);
-      }
-
-      // Set data even if partially failed
-      setHospitals(hospitalsData || []);
-      setAmbulances(ambulancesData || []);
-      
-      console.log("[ADMIN] Data loaded:", {
-        hospitals: hospitalsData?.length || 0,
-        ambulances: ambulancesData?.length || 0,
-      });
-    } catch (error: any) {
-      console.error("[ADMIN] Exception fetching data:", error?.message || error);
-      // Set empty arrays to prevent null crashes
-      setHospitals([]);
-      setAmbulances([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddHospital = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-
-    const email = formData.get("hospital_email") as string;
-    const password = formData.get("hospital_password") as string;
-    const name = formData.get("hospital_name") as string;
-    const lat = parseFloat(formData.get("hospital_lat") as string);
-    const lng = parseFloat(formData.get("hospital_lng") as string);
-    const contact = formData.get("hospital_contact") as string;
-
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
+  const filteredHospitals = useMemo(() => filterPlaces(hospitals, hospitalSearch), [hospitals, hospitalSearch]);
+  const filteredAmbulances = useMemo(() => filterPlaces(ambulances, ambulanceSearch), [ambulances, ambulanceSearch]);
+  const filteredEmergencies = useMemo(() => {
+    const s = emergencySearch.trim().toLowerCase();
+    const list = emergencies.filter((e) => {
+      if (statusFilter !== "all" && (e.status ?? "") !== statusFilter) return false;
+      if (!s) return true;
+      return (e.status ?? "").includes(s) || (fmtCoord(e.latitude, e.longitude) ?? "").includes(s) || fmtDate(e.created_at).toLowerCase().includes(s);
     });
-
-    if (authError) {
-      toast({
-        title: "Error",
-        description: authError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const { error: hospitalError } = await supabase.from("hospitals").insert({
-      name,
-      latitude: lat,
-      longitude: lng,
-      contact_number: contact,
-      user_id: authData.user?.id,
+    return list.sort((a, b) => {
+      const d = new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
+      return sortOrder === "newest" ? -d : d;
     });
+  }, [emergencies, emergencySearch, statusFilter, sortOrder]);
 
-    if (hospitalError) {
-      toast({
-        title: "Error",
-        description: hospitalError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const { error: roleError } = await supabase.from("user_roles").insert({
-      user_id: authData.user?.id,
-      role: "hospital",
-    });
-
-    if (roleError) {
-      toast({
-        title: "Error",
-        description: roleError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    toast({
-      title: "Success",
-      description: "Hospital added successfully",
-    });
-
-    fetchData();
-    fetchStats();
-    e.currentTarget.reset();
-  };
-
-  const handleAddAmbulance = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-
-    const email = formData.get("ambulance_email") as string;
-    const password = formData.get("ambulance_password") as string;
-    const name = formData.get("ambulance_name") as string;
-    const lat = parseFloat(formData.get("ambulance_lat") as string);
-    const lng = parseFloat(formData.get("ambulance_lng") as string);
-    const contact = formData.get("ambulance_contact") as string;
-
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (authError) {
-      toast({
-        title: "Error",
-        description: authError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const { error: ambulanceError } = await supabase.from("ambulance_services").insert({
-      name,
-      latitude: lat,
-      longitude: lng,
-      contact_number: contact,
-      user_id: authData.user?.id,
-    });
-
-    if (ambulanceError) {
-      toast({
-        title: "Error",
-        description: ambulanceError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const { error: roleError } = await supabase.from("user_roles").insert({
-      user_id: authData.user?.id,
-      role: "ambulance",
-    });
-
-    if (roleError) {
-      toast({
-        title: "Error",
-        description: roleError.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    toast({
-      title: "Success",
-      description: "Ambulance service added successfully",
-    });
-
-    fetchData();
-    fetchStats();
-    e.currentTarget.reset();
-  };
-
-  const handleDelete = async (type: "hospital" | "ambulance", id: string) => {
+  const confirmDelete = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    const { type, item } = pendingDelete;
     const table = type === "hospital" ? "hospitals" : "ambulance_services";
-    const { error } = await supabase.from(table).delete().eq("id", id);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Success",
-        description: `${type} deleted successfully`,
-      });
-      fetchData();
+    try {
+      const { error } = await supabase.from(table).delete().eq("id", item.id);
+      if (error) throw error;
+      toast({ title: "Deleted", description: `${item.name} was removed.` });
+      fetchPlaces(type === "hospital" ? "hospitals" : "ambulances");
       fetchStats();
+    } catch (e: any) {
+      const msg = /foreign key/i.test(e?.message ?? "")
+        ? "This record is linked to other data (e.g. emergencies or fleet) and can't be deleted."
+        : e?.message || "Delete failed";
+      toast({ title: "Couldn't delete", description: msg, variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
+  const handleCreate = (type: "hospital" | "ambulance") => async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (submitting) return;
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const get = (k: string) => String(fd.get(`${type}_${k}`) ?? "").trim();
+    const payload = {
+      type, email: get("email"), password: get("password"), name: get("name"),
+      latitude: parseFloat(get("lat")), longitude: parseFloat(get("lng")), contact: get("contact"),
+    };
+    const err =
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email) ? "Enter a valid email." :
+      payload.password.length < 6 ? "Password must be at least 6 characters." :
+      !payload.name ? "Name is required." :
+      isNaN(payload.latitude) || payload.latitude < -90 || payload.latitude > 90 ? "Latitude must be between -90 and 90." :
+      isNaN(payload.longitude) || payload.longitude < -180 || payload.longitude > 180 ? "Longitude must be between -180 and 180." :
+      payload.contact.replace(/\D/g, "").length < 10 ? "Enter a valid contact number." : null;
+    if (err) { toast({ title: "Check the form", description: err, variant: "destructive" }); return; }
+
+    setSubmitting(type);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-create-account", { body: payload });
+      if (error || data?.error) {
+        let msg = data?.error || error?.message;
+        try { msg = (await (error as any)?.context?.json())?.error || msg; } catch { /* ignore */ }
+        throw new Error(msg || "Creation failed");
+      }
+      toast({ title: "Created", description: `${payload.name} was added.` });
+      form.reset();
+      fetchPlaces(type === "hospital" ? "hospitals" : "ambulances");
+      fetchStats();
+    } catch (e: any) {
+      toast({ title: "Couldn't create account", description: e.message, variant: "destructive" });
+    } finally {
+      setSubmitting(null);
     }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate("/auth");
+    navigate("/admin-login");
+  };
+
+  const statCards: { key: StatKey; label: string; icon: any; color: string }[] = [
+    { key: "totalEmergencies", label: "Total Emergencies", icon: BarChart3, color: "text-blue-400" },
+    { key: "activeEmergencies", label: "Active Now", icon: AlertTriangle, color: "text-red-400" },
+    { key: "resolvedEmergencies", label: "Resolved", icon: CheckCircle, color: "text-green-400" },
+    { key: "totalHospitals", label: "Hospitals", icon: Hospital, color: "text-purple-400" },
+    { key: "totalAmbulances", label: "Ambulances", icon: Ambulance, color: "text-orange-400" },
+    { key: "totalUsers", label: "Registered Users", icon: Users, color: "text-cyan-400" },
+  ];
+
+  const PlacesTable = ({ kind, list, all, search, setSearch }: {
+    kind: "hospital" | "ambulance"; list: Place[]; all: Place[]; search: string; setSearch: (v: string) => void;
+  }) => {
+    const key = kind === "hospital" ? "hospitals" : "ambulances";
+    const emptyText = kind === "hospital" ? "No hospitals registered yet." : "No ambulance services registered yet.";
+    return (
+      <>
+        <div className="relative mb-4">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input placeholder="Search by name or contact" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-slate-900/50 border-slate-600 text-white" />
+        </div>
+        {loading[key] ? <TableSkeleton /> : errors[key] ? (
+          <ErrorState message={errors[key]!} onRetry={() => fetchPlaces(key)} />
+        ) : all.length === 0 ? <p className="text-slate-500 text-center py-8">{emptyText}</p>
+          : list.length === 0 ? <p className="text-slate-500 text-center py-8">No matches for "{search}".</p> : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-700">
+                  <TableHead className="text-slate-300">{kind === "hospital" ? "Hospital" : "Service"}</TableHead>
+                  <TableHead className="text-slate-300">Contact</TableHead>
+                  <TableHead className="text-slate-300">Location</TableHead>
+                  <TableHead className="text-slate-300">Registered</TableHead>
+                  <TableHead className="text-slate-300 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((p) => {
+                  const coord = fmtCoord(p.latitude, p.longitude);
+                  return (
+                    <TableRow key={p.id} className="border-slate-700">
+                      <TableCell className="text-white font-medium">{p.name || "—"}</TableCell>
+                      <TableCell className="text-slate-300">{p.contact_number || "—"}</TableCell>
+                      <TableCell className="text-slate-400 font-mono text-xs">{coord ?? "—"}</TableCell>
+                      <TableCell className="text-slate-400 text-xs">{fmtDate(p.created_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="destructive" size="sm" onClick={() => setPendingDelete({ type: kind, item: p })}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const CreateForm = ({ type }: { type: "hospital" | "ambulance" }) => {
+    const isH = type === "hospital";
+    const busy = submitting === type;
+    return (
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            {isH ? <Hospital className="h-5 w-5" /> : <Ambulance className="h-5 w-5" />}
+            {isH ? "Add Hospital" : "Add Ambulance Service"}
+          </CardTitle>
+          <CardDescription className="text-slate-400">Creates a login account for this {isH ? "hospital" : "service"}.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreate(type)} className="space-y-4">
+            <fieldset disabled={busy} className="space-y-4">
+              <div><Label className="text-slate-300">Email</Label><Input name={`${type}_email`} type="email" required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+              <div><Label className="text-slate-300">Password</Label><Input name={`${type}_password`} type="password" minLength={6} required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+              <div><Label className="text-slate-300">{isH ? "Hospital Name" : "Service Name"}</Label><Input name={`${type}_name`} required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label className="text-slate-300">Latitude</Label><Input name={`${type}_lat`} type="number" step="any" min={-90} max={90} required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+                <div><Label className="text-slate-300">Longitude</Label><Input name={`${type}_lng`} type="number" step="any" min={-180} max={180} required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+              </div>
+              <div><Label className="text-slate-300">Contact Number</Label><Input name={`${type}_contact`} type="tel" required className="bg-slate-900/50 border-slate-600 text-white" /></div>
+            </fieldset>
+            <Button type="submit" disabled={busy} className="w-full">
+              {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {busy ? "Creating..." : isH ? "Add Hospital" : "Add Ambulance"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {import.meta.env.VITE_DEV_MODE === "true" && (
-        <div className="bg-yellow-400 text-yellow-950 text-center text-sm font-semibold py-2 px-4 border-b border-yellow-600">
-          ⚠️ DEV MODE — Admin Authentication Disabled
-        </div>
-      )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-x-hidden">
       <div className="container mx-auto p-4 md:p-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div className="flex items-center gap-3">
             <img src="/logo.png" alt="CareConnect" className="h-10 w-10" />
             <div>
-              <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-              <p className="text-slate-400 text-sm">System administration dashboard</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={handleLogout} className="border-slate-600 text-slate-300 hover:bg-slate-700">
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
-        </div>
-
-        {/* Privacy Notice */}
-        <Card className="mb-6 bg-amber-900/20 border-amber-500/30">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-amber-400" />
-              <p className="text-amber-200 text-sm">
-                <strong>Privacy Notice:</strong> Admin access is restricted to system management only. 
-                Patient medical details and guardian contact information are not accessible from this panel.
+              <h1 className="text-2xl md:text-3xl font-bold text-white">Admin Panel</h1>
+              <p className="text-slate-400 text-xs">
+                {lastUpdated ? `Last updated: ${lastUpdated.toLocaleTimeString()}` : "Loading..."}
               </p>
             </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={refreshAll} disabled={refreshing} className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />Refresh
+            </Button>
+            <Button variant="outline" onClick={handleLogout} className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              <LogOut className="mr-2 h-4 w-4" />Logout
+            </Button>
+          </div>
+        </div>
+
+        <Card className="mb-6 bg-amber-900/20 border-amber-500/30">
+          <CardContent className="py-4 flex items-center gap-3">
+            <Shield className="w-5 h-5 text-amber-400 shrink-0" />
+            <p className="text-amber-200 text-sm">
+              <strong>Privacy Notice:</strong> Patient medical details and guardian contact information are not shown in this panel.
+            </p>
           </CardContent>
         </Card>
 
-        {/* Stats Overview */}
+        {statsWarning && (
+          <p className="mb-4 text-amber-300 text-sm flex items-center gap-2"><AlertTriangle className="w-4 h-4" />{statsWarning}</p>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <BarChart3 className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.totalEmergencies}</p>
-              <p className="text-slate-400 text-xs">Total Emergencies</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.activeEmergencies}</p>
-              <p className="text-slate-400 text-xs">Active Now</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.resolvedEmergencies}</p>
-              <p className="text-slate-400 text-xs">Resolved</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <Hospital className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.totalHospitals}</p>
-              <p className="text-slate-400 text-xs">Hospitals</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <Ambulance className="w-8 h-8 text-orange-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.totalAmbulances}</p>
-              <p className="text-slate-400 text-xs">Ambulances</p>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-slate-800/50 border-slate-700">
-            <CardContent className="p-4 text-center">
-              <Users className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{stats.totalUsers}</p>
-              <p className="text-slate-400 text-xs">Registered Users</p>
-            </CardContent>
-          </Card>
+          {statCards.map(({ key, label, icon: Icon, color }) => (
+            <Card key={key} className="bg-slate-800/50 border-slate-700">
+              <CardContent className="p-4 text-center">
+                <Icon className={`w-8 h-8 ${color} mx-auto mb-2`} />
+                {stats[key] === null ? <Skeleton className="h-8 w-12 mx-auto" /> :
+                  <p className="text-2xl font-bold text-white">{stats[key]}</p>}
+                <p className="text-slate-400 text-xs">{label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Main Content Tabs */}
         <Tabs defaultValue="emergencies" className="space-y-6">
-          <TabsList className="bg-slate-800/50 border border-slate-700">
-            <TabsTrigger value="emergencies" className="data-[state=active]:bg-slate-700">
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              Emergencies
-            </TabsTrigger>
-            <TabsTrigger value="hospitals" className="data-[state=active]:bg-slate-700">
-              <Hospital className="w-4 h-4 mr-2" />
-              Hospitals
-            </TabsTrigger>
-            <TabsTrigger value="ambulances" className="data-[state=active]:bg-slate-700">
-              <Ambulance className="w-4 h-4 mr-2" />
-              Ambulances
-            </TabsTrigger>
-            <TabsTrigger value="add-new" className="data-[state=active]:bg-slate-700">
-              <Activity className="w-4 h-4 mr-2" />
-              Add New
-            </TabsTrigger>
+          <TabsList className="bg-slate-800/50 border border-slate-700 flex-wrap h-auto">
+            <TabsTrigger value="emergencies" className="data-[state=active]:bg-slate-700"><AlertTriangle className="w-4 h-4 mr-2" />Emergencies</TabsTrigger>
+            <TabsTrigger value="hospitals" className="data-[state=active]:bg-slate-700"><Hospital className="w-4 h-4 mr-2" />Hospitals</TabsTrigger>
+            <TabsTrigger value="ambulances" className="data-[state=active]:bg-slate-700"><Ambulance className="w-4 h-4 mr-2" />Ambulances</TabsTrigger>
+            <TabsTrigger value="add-new" className="data-[state=active]:bg-slate-700"><Activity className="w-4 h-4 mr-2" />Add New</TabsTrigger>
           </TabsList>
 
-          {/* Emergency History Tab */}
           <TabsContent value="emergencies">
             <Card className="bg-slate-800/50 border-slate-700">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-400" />
-                  Emergency History
-                </CardTitle>
-                <CardDescription className="text-slate-400">
-                  View emergency events and SMS notification status (patient details hidden for privacy)
-                </CardDescription>
+                <CardTitle className="text-white flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-red-400" />Emergency History</CardTitle>
+                <CardDescription className="text-slate-400">Latest {EMERGENCY_LIMIT} emergencies (patient details hidden)</CardDescription>
               </CardHeader>
               <CardContent>
-                {loadingEmergencies ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+                <div className="flex flex-col md:flex-row gap-3 mb-4">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input placeholder="Search by date, status or location" value={emergencySearch} onChange={(e) => setEmergencySearch(e.target.value)}
+                      className="pl-9 bg-slate-900/50 border-slate-600 text-white" />
                   </div>
-                ) : emergencies.length === 0 ? (
-                  <p className="text-slate-500 text-center py-8">No emergencies recorded yet</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-700">
-                        <TableHead className="text-slate-300">Time</TableHead>
-                        <TableHead className="text-slate-300">Status</TableHead>
-                        <TableHead className="text-slate-300">Location</TableHead>
-                        <TableHead className="text-slate-300">SMS Status</TableHead>
-                        <TableHead className="text-slate-300">Hospital</TableHead>
-                        <TableHead className="text-slate-300">Ambulance</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {emergencies.map((emergency) => (
-                        <TableRow key={emergency.id} className="border-slate-700">
-                          <TableCell className="text-slate-300">
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              <span className="text-xs">
-                                {new Date(emergency.created_at).toLocaleString()}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                emergency.status === "active" ? "destructive" :
-                                emergency.status === "resolved" ? "default" :
-                                "secondary"
-                              }
-                              className="text-xs"
-                            >
-                              {emergency.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-slate-400">
-                            {emergency.latitude && emergency.longitude ? (
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                <span className="font-mono text-xs">
-                                  {emergency.latitude.toFixed(4)}, {emergency.longitude.toFixed(4)}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-500">N/A</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <MessageSquare className="w-3 h-3 text-slate-400" />
-                              <SMSStatusBadge
-                                status={
-                                  emergency.guardian_notified ? "sent" :
-                                  emergency.notified_at ? "partial" :
-                                  "pending"
-                                }
-                              />
-                            </div>
-                            {emergency.notified_at && (
-                              <span className="text-xs text-slate-500 block mt-1">
-                                {new Date(emergency.notified_at).toLocaleTimeString()}
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-400 text-xs">
-                            {emergency.accepted_by_hospital ? (
-                              <Badge variant="outline" className="text-green-400 border-green-400/30">
-                                Accepted
-                              </Badge>
-                            ) : (
-                              <span className="text-slate-500">Pending</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-400 text-xs">
-                            {emergency.dispatched_to_ambulance ? (
-                              <Badge variant="outline" className="text-orange-400 border-orange-400/30">
-                                Dispatched
-                              </Badge>
-                            ) : (
-                              <span className="text-slate-500">-</span>
-                            )}
-                          </TableCell>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="md:w-40 bg-slate-900/50 border-slate-600 text-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as any)}>
+                    <SelectTrigger className="md:w-40 bg-slate-900/50 border-slate-600 text-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest first</SelectItem>
+                      <SelectItem value="oldest">Oldest first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {loading.emergencies ? <TableSkeleton /> : errors.emergencies ? (
+                  <ErrorState message={errors.emergencies} onRetry={fetchEmergencies} />
+                ) : emergencies.length === 0 ? <p className="text-slate-500 text-center py-8">No emergencies recorded yet.</p>
+                  : filteredEmergencies.length === 0 ? <p className="text-slate-500 text-center py-8">No emergencies match these filters.</p> : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-slate-700">
+                          <TableHead className="text-slate-300">Time</TableHead>
+                          <TableHead className="text-slate-300">Status</TableHead>
+                          <TableHead className="text-slate-300">Location</TableHead>
+                          <TableHead className="text-slate-300">SMS</TableHead>
+                          <TableHead className="text-slate-300">Hospital</TableHead>
+                          <TableHead className="text-slate-300">Ambulance</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredEmergencies.map((em) => {
+                          const coord = fmtCoord(em.latitude, em.longitude);
+                          return (
+                            <TableRow key={em.id} className="border-slate-700">
+                              <TableCell className="text-slate-300"><div className="flex items-center gap-2"><Clock className="w-3 h-3 text-slate-400" /><span className="text-xs">{fmtDate(em.created_at)}</span></div></TableCell>
+                              <TableCell>
+                                <Badge variant={em.status === "active" ? "destructive" : em.status === "resolved" ? "default" : "secondary"} className="text-xs">{em.status ?? "unknown"}</Badge>
+                              </TableCell>
+                              <TableCell className="text-slate-400">
+                                {coord ? (
+                                  <div className="flex items-center gap-2">
+                                    <MapPin className="w-3 h-3" /><span className="font-mono text-xs">{coord}</span>
+                                    <a href={mapUrl(em.latitude!, em.longitude!)} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-xs inline-flex items-center gap-1">
+                                      Open<ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  </div>
+                                ) : <span className="text-slate-500">N/A</span>}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <MessageSquare className="w-3 h-3 text-slate-400" />
+                                  <SMSStatusBadge status={em.guardian_notified ? "sent" : em.notified_at ? "partial" : "pending"} />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {em.accepted_by_hospital ? <Badge variant="outline" className="text-green-400 border-green-400/30">Accepted</Badge> : <span className="text-slate-500">Pending</span>}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {em.dispatched_to_ambulance ? <Badge variant="outline" className="text-orange-400 border-orange-400/30">Dispatched</Badge> : <span className="text-slate-500">—</span>}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Hospitals Tab */}
           <TabsContent value="hospitals">
             <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Hospital className="h-5 w-5" />
-                  Registered Hospitals
-                </CardTitle>
-                <CardDescription className="text-slate-400">
-                  View and manage hospital registrations
-                </CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-white flex items-center gap-2"><Hospital className="h-5 w-5" />Registered Hospitals</CardTitle></CardHeader>
               <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
-                  </div>
-                ) : hospitals.length === 0 ? (
-                  <p className="text-slate-500 text-center py-8">No hospitals registered yet</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-700">
-                        <TableHead className="text-slate-300">Name</TableHead>
-                        <TableHead className="text-slate-300">Contact</TableHead>
-                        <TableHead className="text-slate-300">Location</TableHead>
-                        <TableHead className="text-slate-300">Registered</TableHead>
-                        <TableHead className="text-slate-300">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {hospitals.map((hospital) => (
-                        <TableRow key={hospital.id} className="border-slate-700">
-                          <TableCell className="text-white font-medium">{hospital.name}</TableCell>
-                          <TableCell className="text-slate-300">{hospital.contact_number}</TableCell>
-                          <TableCell className="text-slate-400 font-mono text-xs">
-                            {hospital.latitude?.toFixed(4)}, {hospital.longitude?.toFixed(4)}
-                          </TableCell>
-                          <TableCell className="text-slate-400 text-sm">
-                            {hospital.created_at ? new Date(hospital.created_at).toLocaleDateString() : "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDelete("hospital", hospital.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                <PlacesTable kind="hospital" list={filteredHospitals} all={hospitals} search={hospitalSearch} setSearch={setHospitalSearch} />
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Ambulances Tab */}
           <TabsContent value="ambulances">
             <Card className="bg-slate-800/50 border-slate-700">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Ambulance className="h-5 w-5" />
-                  Registered Ambulance Services
-                </CardTitle>
-                <CardDescription className="text-slate-400">
-                  View and manage ambulance registrations
-                </CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-white flex items-center gap-2"><Ambulance className="h-5 w-5" />Ambulance Services</CardTitle></CardHeader>
               <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
-                  </div>
-                ) : ambulances.length === 0 ? (
-                  <p className="text-slate-500 text-center py-8">No ambulances registered yet</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-700">
-                        <TableHead className="text-slate-300">Service Name</TableHead>
-                        <TableHead className="text-slate-300">Contact</TableHead>
-                        <TableHead className="text-slate-300">Location</TableHead>
-                        <TableHead className="text-slate-300">Registered</TableHead>
-                        <TableHead className="text-slate-300">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {ambulances.map((ambulance) => (
-                        <TableRow key={ambulance.id} className="border-slate-700">
-                          <TableCell className="text-white font-medium">{ambulance.name}</TableCell>
-                          <TableCell className="text-slate-300">{ambulance.contact_number}</TableCell>
-                          <TableCell className="text-slate-400 font-mono text-xs">
-                            {ambulance.latitude?.toFixed(4)}, {ambulance.longitude?.toFixed(4)}
-                          </TableCell>
-                          <TableCell className="text-slate-400 text-sm">
-                            {ambulance.created_at ? new Date(ambulance.created_at).toLocaleDateString() : "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDelete("ambulance", ambulance.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
+                <PlacesTable kind="ambulance" list={filteredAmbulances} all={ambulances} search={ambulanceSearch} setSearch={setAmbulanceSearch} />
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Add New Tab */}
           <TabsContent value="add-new">
-            <div className="grid md:grid-cols-2 gap-8">
-              {/* Add Hospital */}
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Hospital className="h-5 w-5 text-purple-400" />
-                    Add Hospital
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleAddHospital} className="space-y-4">
-                    <div>
-                      <Label className="text-slate-300">Email</Label>
-                      <Input name="hospital_email" type="email" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Password</Label>
-                      <Input name="hospital_password" type="password" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Hospital Name</Label>
-                      <Input name="hospital_name" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-slate-300">Latitude</Label>
-                        <Input name="hospital_lat" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
-                      </div>
-                      <div>
-                        <Label className="text-slate-300">Longitude</Label>
-                        <Input name="hospital_lng" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Contact Number</Label>
-                      <Input name="hospital_contact" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">Add Hospital</Button>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* Add Ambulance */}
-              <Card className="bg-slate-800/50 border-slate-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Ambulance className="h-5 w-5 text-orange-400" />
-                    Add Ambulance Service
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleAddAmbulance} className="space-y-4">
-                    <div>
-                      <Label className="text-slate-300">Email</Label>
-                      <Input name="ambulance_email" type="email" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Password</Label>
-                      <Input name="ambulance_password" type="password" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Service Name</Label>
-                      <Input name="ambulance_name" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-slate-300">Latitude</Label>
-                        <Input name="ambulance_lat" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
-                      </div>
-                      <div>
-                        <Label className="text-slate-300">Longitude</Label>
-                        <Input name="ambulance_lng" type="number" step="any" required className="bg-slate-700/50 border-slate-600 text-white" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-slate-300">Contact Number</Label>
-                      <Input name="ambulance_contact" required className="bg-slate-700/50 border-slate-600 text-white" />
-                    </div>
-                    <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700">Add Ambulance</Button>
-                  </form>
-                </CardContent>
-              </Card>
+            <div className="grid md:grid-cols-2 gap-6">
+              <CreateForm type="hospital" />
+              <CreateForm type="ambulance" />
             </div>
           </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && !deleting && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {pendingDelete?.type === "hospital" ? "hospital" : "ambulance service"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{pendingDelete?.item.name}"? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDelete(); }} disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
